@@ -31,7 +31,18 @@ Implementation reference only: `kollier-p/sts2-ios-launcher-public` branch
    atomically mark the installation active, preserve the previous installation for
    rollback, and start the engine from the installed content. Never replace a
    currently loaded assembly or pack.
-5. **Credential-free unsigned IPA**: once the IPA no longer embeds game assemblies,
+5. **Preserve JIT mod patching throughout the transition**: keep the target's
+   patched Mono JIT runtime, `sts2_jit_writable` executable-memory alias,
+   `sts2_jit_patch` detour entrypoint, `Reflection.Emit` support, and
+   Harmony hooks for `ModManager.Initialize` and recursive mod discovery.
+   Do not replace the target runtime with the reference's runtime without
+   proving equivalent dynamic code generation and in-memory method patching.
+   The bootstrap UI may run without JIT, but the game must require an actual
+   executable-memory test before loading code mods. Preserve
+   `Documents/mods` and the mod hooks across a launcher-to-game restart.
+   `tests/ios/test_jit_mod_contract.py` enforces a source-level regression
+   contract in CI; real-device detour validation remains mandatory.
+6. **Credential-free unsigned IPA**: once the IPA no longer embeds game assemblies,
    adapt the reference workflow's hosted macOS build, `--unsigned` export, no-game-file
    scanner, and artifact upload. It must build from a clean checkout without Steam
    files or Apple secrets. Verify the IPA contains the launcher and runtime but no
