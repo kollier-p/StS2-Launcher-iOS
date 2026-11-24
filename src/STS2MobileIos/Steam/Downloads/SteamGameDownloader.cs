@@ -53,13 +53,13 @@ public static class SteamGameDownloader
     /// is verified with an app ticket before a manifest or depot key is requested.
     /// Good chunks in .partial files survive cancellation and are rechecked on the next run.
     /// </summary>
-    public static Task<Receipt> DownloadAsync(SteamLogin login, string stagingRoot, IProgress<Progress>? progress, CancellationToken cancellation) =>
+    public static Task<Receipt> DownloadAsync(string accountName, string refreshToken, string stagingRoot, IProgress<Progress>? progress, CancellationToken cancellation) =>
         Task.Run(async () =>
         {
-            if (string.IsNullOrWhiteSpace(login.AccountName) || string.IsNullOrWhiteSpace(login.RefreshToken))
+            if (string.IsNullOrWhiteSpace(accountName) || string.IsNullOrWhiteSpace(refreshToken))
                 throw new InvalidOperationException("Connect your Steam account before downloading game files.");
             cancellation.ThrowIfCancellationRequested();
-            using var connection = new SteamConnection(login.AccountName, login.RefreshToken, new QuietLogger());
+            using var connection = new SteamConnection(accountName, refreshToken, new QuietLogger());
 
             progress?.Report(new Progress("Checking Steam ownership"));
             SteamApps.AppOwnershipTicketCallback ownership =
