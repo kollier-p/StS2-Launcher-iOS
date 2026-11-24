@@ -1,0 +1,67 @@
+name: Build signed iOS IPA
+
+# A trusted Apple Silicon Mac runner is required. The game is read from the
+# runner's own Steam installation; it is never uploaded to the source repository.
+# Manual-only: untrusted pull requests must not reach signing keys or game files.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ipa:
+    runs-on: [self-hosted, macOS, ARM64, sts2-ios-builder]
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify build machine and required secrets
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+        run: |
+          test -n "$APPLE_TEAM_ID" || { echo "::error::Missing APPLE_TEAM_ID secret"; exit 1; }
+          test -n "$IOS_BUNDLE_ID" || { echo "::error::Missing IOS_BUNDLE_ID secret"; exit 1; }
+          test "$(uname -s)" = Darwin && test "$(uname -m)" = arm64
+          xcodebuild -version
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          config = {
+              "team_id": os.environ["APPLE_TEAM_ID"],
+              "bundle_id": os.environ["IOS_BUNDLE_ID"],
+              "device": "NOT_REQUIRED_FOR_BUILD",
+              "profile": False,
+          }
+          Path("ios/config.local.json").write_text(json.dumps(config))
+          PY
+      - name: Bootstrap pinned iOS dependencies
+        run: python3 scripts/ios/bootstrap.py
+      - name: Prepare references from locally owned Steam installation
+        run: python3 scripts/ios/build.py prepare
+      - name: Prepare source game content
+        run: python3 scripts/ios/build.py content
+      - name: Build patched Mono JIT runtime
+        run: python3 scripts/ios/build.py runtime
+      - name: Build and sign iOS application
+        run: python3 scripts/ios/build.py build
+      - name: Package signed IPA and checksum
+        run: |
+          python3 scripts/ios/package_ipa.py \
+            --app .cache/xcode-jit/Build/Products/Release-iphoneos/StS2.app \
+            --output dist/StS2-JIT.ipa \
+            --bundle-id "${{ secrets.IOS_BUNDLE_ID }}"
+      - name: Verify signature and IPA contents
+        run: |
+          codesign --verify --deep --strict --verbose=2 .cache/xcode-jit/Build/Products/Release-iphoneos/StS2.app
+          unzip -t dist/StS2-JIT.ipa | tail -n 1
+          shasum -a 256 -c dist/StS2-JIT.ipa.sha256
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StS2-JIT-signed-IPA
+          path: |
+            dist/StS2-JIT.ipa
+            dist/StS2-JIT.ipa.sha256
+          if-no-files-found: error
+          retention-days: 7
