@@ -287,10 +287,12 @@ def build_shell_unsigned(cfg, host):
     missing = [name for name in required if not (managed / name).is_file()]
     if missing:
         raise SystemExit("Unsigned host is missing managed runtime dependencies: " + ", ".join(missing))
-    forbidden = [name for name in ("sts2.dll", "release_info.json", "Slay the Spire 2.pck",
-                                   "StS2.pck") if (managed / name).exists() or (app / name).exists()]
-    if forbidden:
-        raise SystemExit("Game asset leaked into unsigned IPA build: " + ", ".join(forbidden))
+    # Godot exports its own small StS2.pck containing the public bootstrap
+    # scene. That host PCK is required and is NOT Steam's multi-gigabyte game
+    # PCK. Apply the same fail-closed artifact scanner used in the CI publish
+    # step: allow only the small root host pack, never the game DLL/depot/PCK.
+    from scan_unsigned_ipa import inspect_app
+    inspect_app(app)
     print(f"Game-free unsigned iOS host built at {app}; live Mono JIT and SteamKit2 retained.")
 
 def install_game(cfg, push_content=False, mods=None):
