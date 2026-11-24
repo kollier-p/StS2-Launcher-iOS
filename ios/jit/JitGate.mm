@@ -177,7 +177,25 @@ static void ForwardLifecycle(id service, SEL selector, UIApplication *applicatio
     [self.timer invalidate];
     self.timer = nil;
     self.notice.text = @"StS2 JIT\n\nStarting game...";
-    originalLaunch(self.service, @selector(application:didFinishLaunchingWithOptions:), self.application, self.launchOptions);
+    BOOL launched = originalLaunch(self.service, @selector(application:didFinishLaunchingWithOptions:),
+        self.application, self.launchOptions);
+    if (!launched) {
+        self.notice.text = @"The Godot game failed to initialize. Check game compatibility and your JIT permission.";
+        return;
+    }
+    // iOS 27 requires a scene-bound window, while Godot 4.5.1 still creates
+    // its own window in didFinishLaunching. Move *that same engine window* to
+    // the scene the first-launch UIKit gate owned. Do not swap rendering views.
+    UIWindow *gameWindow = [self.service valueForKey:@"window"];
+    UIWindowScene *scene = self.window.windowScene;
+    if (scene && gameWindow && gameWindow != self.window) {
+        gameWindow.windowScene = scene;
+        gameWindow.frame = scene.coordinateSpace.bounds;
+        id<UIWindowSceneDelegate> sceneDelegate = scene.delegate;
+        if ([sceneDelegate respondsToSelector:@selector(setWindow:)])
+            [sceneDelegate setWindow:gameWindow];
+    }
+    if (gameWindow) [gameWindow makeKeyAndVisible];
     engineStarted = YES;
     // The initial active notification was deliberately withheld while waiting.
     ForwardLifecycle(self.service, @selector(applicationDidBecomeActive:), self.application);
