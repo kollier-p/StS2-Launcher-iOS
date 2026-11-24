@@ -15,13 +15,17 @@ import tempfile
 import zipfile
 
 
-def package(app: Path, output: Path, bundle_id: str | None = None) -> str:
+def package(app: Path, output: Path, bundle_id: str | None = None, *, unsigned: bool = False) -> str:
     app = app.resolve()
     if not app.is_dir() or app.suffix != ".app":
         raise ValueError("Expected an existing signed .app directory")
     info = app / "Info.plist"
-    if not info.is_file() or not (app / "_CodeSignature/CodeResources").is_file():
-        raise ValueError("App has no Info.plist or code-signature resource seal")
+    if not info.is_file():
+        raise ValueError("App has no Info.plist")
+    if not unsigned and not (app / "_CodeSignature/CodeResources").is_file():
+        raise ValueError("App has no code-signature resource seal")
+    if unsigned and ((app / "Managed/sts2.dll").exists() or (app / "release_info.json").exists()):
+        raise ValueError("Unsigned bootstrap IPA must not bundle game assemblies or release metadata")
     metadata = plistlib.loads(info.read_bytes())
     identifier = metadata.get("CFBundleIdentifier")
     if not identifier or (bundle_id is not None and identifier != bundle_id):
@@ -65,8 +69,9 @@ def package(app: Path, output: Path, bundle_id: str | None = None) -> str:
                 f"Payload/{app.name}/Info.plist",
                 f"Payload/{app.name}/{executable}",
                 f"Payload/{app.name}/Managed/STS2Jit.dll",
-                f"Payload/{app.name}/_CodeSignature/CodeResources",
             ]
+            if not unsigned:
+                required.append(f"Payload/{app.name}/_CodeSignature/CodeResources")
             if not all(name in names for name in required) or archive.testzip() is not None:
                 raise ValueError("IPA integrity check failed")
         temporary.replace(output)
@@ -80,8 +85,10 @@ def main():
     parser.add_argument("--app", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--bundle-id")
+    parser.add_argument("--unsigned", action="store_true",
+                        help="Package an unsigned app with no Steam game files; your sideloader signs it")
     args = parser.parse_args()
-    digest = package(args.app, args.output, args.bundle_id)
+    digest = package(args.app, args.output, args.bundle_id, unsigned=args.unsigned)
     print(f"Created {args.output} (SHA-256 {digest})")
 
 
