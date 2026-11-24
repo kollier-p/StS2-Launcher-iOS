@@ -34,9 +34,18 @@ def check(paths: set[str], sizes: dict[str, int], plist_data: bytes) -> None:
     game = [path for path in paths if Path(path).name.lower() in FORBIDDEN]
     if game:
         raise ValueError("Commercial game files leaked into IPA: " + ", ".join(game))
-    packs = [path for path in paths if path.lower().endswith(".pck") and sizes.get(path, 0) > MAX_PACK_BYTES]
-    if packs:
-        raise ValueError("Unexpected large content pack in IPA: " + ", ".join(packs))
+    # Godot's iOS exporter always emits a small *launcher* resource pack
+    # named StS2.pck at the bundle root. It contains the public bootstrap
+    # scene, not the Steam-owned game. Reject any other PCK location/name and
+    # reject an oversized root pack, which would indicate game content.
+    packs = {path for path in paths if path.lower().endswith(".pck")}
+    if "StS2.pck" not in packs:
+        raise ValueError("Godot's public bootstrap StS2.pck is missing")
+    unexpected = sorted(packs - {"StS2.pck"})
+    if unexpected:
+        raise ValueError("Unexpected packaged game/content PCK: " + ", ".join(unexpected))
+    if sizes.get("StS2.pck", 0) < 1 or sizes["StS2.pck"] > MAX_PACK_BYTES:
+        raise ValueError("The bootstrap StS2.pck is empty or too large to be a game-free host")
 
 
 def inspect_app(app: Path) -> None:
