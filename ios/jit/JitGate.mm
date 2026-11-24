@@ -138,12 +138,32 @@ static void ForwardLifecycle(id service, SEL selector, UIApplication *applicatio
     NSString *pack = [self.documents stringByAppendingPathComponent:@"StS2.pck"];
     NSDictionary *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:pack error:nil];
     unsigned long long expectedSize = [NSBundle.mainBundle.infoDictionary[@"STS2ContentSize"] unsignedLongLongValue];
-    BOOL complete = [[attributes fileType] isEqualToString:NSFileTypeRegular] && expectedSize > 0 && [attributes fileSize] == expectedSize;
+    NSString *readyPath = [self.documents stringByAppendingPathComponent:@"StS2.ready.json"];
+    NSData *readyData = [NSData dataWithContentsOfFile:readyPath];
+    NSDictionary *ready = readyData ? [NSJSONSerialization JSONObjectWithData:readyData options:0 error:nil] : nil;
+    if ([ready isKindOfClass:NSDictionary.class]) {
+        unsigned long long bytes = [ready[@"PackBytes"] unsignedLongLongValue];
+        unsigned long long manifest = [ready[@"Manifest"] unsignedLongLongValue];
+        NSString *managed = [self.documents stringByAppendingPathComponent:
+            [NSString stringWithFormat:@"steam-game-installs/%llu/Managed/sts2.dll", manifest]];
+        // A corrupt/partial ready marker never satisfies this gate.
+        expectedSize = bytes > 0 && manifest > 0 &&
+            [NSFileManager.defaultManager fileExistsAtPath:managed] ? bytes : 0;
+    }
+    BOOL complete = [[attributes fileType] isEqualToString:NSFileTypeRegular] &&
+        expectedSize > 0 && [attributes fileSize] == expectedSize;
+    if (self.justInstalled) return;
     if (!complete) {
-        self.notice.text = @"StS2 JIT\n\nGame content is missing or still copying.\n\n"
-            @"Open Files > On My iPad > StS2 JIT.\nCopy the prepared StS2.pck into that folder.\n"
-            @"Copy your mod folders into mods, then return here.\n\n"
-            @"Keep the filename StS2.pck and wait for the copy to finish.";
+        uint32_t permission = 0;
+        if (csops(getpid(), 0, &permission, sizeof(permission)) != 0 || !(permission & 0x10000000)) {
+            self.notice.text = @"StS2 JIT\n\nNo game is installed yet.\n\n"
+                @"Enable JIT for this app with your JIT tool or a Mac debugger. "
+                @"After JIT is enabled, SteamKit2 will sign you in, download your owned game, "
+                @"prepare it for iOS and install it here.\n\n"
+                @"JIT must be enabled again whenever you restart the app.";
+            return;
+        }
+        if (!self.bootstrapStarted) [self beginBootstrap];
         return;
     }
     uint32_t flags = 0;
