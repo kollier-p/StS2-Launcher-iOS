@@ -9,7 +9,7 @@
     <GameReferences Condition="'$(GameReferences)' == ''">$(MSBuildThisFileDirectory)../../upstream/game-refs</GameReferences>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(UseGameStub)' != 'true'">
     <Reference Include="sts2">
       <HintPath>$(GameReferences)/sts2.dll</HintPath>
       <Private>false</Private>
@@ -18,6 +18,13 @@
       <HintPath>$(GameReferences)/GodotSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseGameStub)' == 'true'">
+    <!-- Compile-only legal API declarations; real sts2.dll comes from Steam on device. -->
+    <ProjectReference Include="../STS2GameStub/STS2GameStub.csproj" PrivateAssets="all">
+      <Private>false</Private>
+    </ProjectReference>
+    <PackageReference Include="GodotSharp" Version="4.5.1" />
   </ItemGroup>
 
   <ItemGroup>
