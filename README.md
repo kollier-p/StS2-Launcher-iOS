@@ -65,6 +65,18 @@ from Steam without replacing the active game or saves. For now, the original
 Mac preparation is still required to build and first launch the host; see
 [on-device game downloads](docs/steam-game-downloads.md) for details.
 
+## Signed IPA artifact (feature branch)
+
+A manually triggered [Build signed iOS IPA](.github/workflows/build-ipa.yml)
+workflow builds the signed Xcode app on a trusted self-hosted Apple Silicon
+Mac and uploads `StS2-JIT.ipa` plus its SHA-256 checksum. The Mac must have
+Xcode, a signing identity, an owned Steam game installation and the required
+build tools; set the GitHub Actions secrets `APPLE_TEAM_ID` and
+`IOS_BUNDLE_ID`. See [workflow requirements](docs/steam-game-downloads.md#signed-ipa-workflow).
+The IPA is an installable **signed** build for its provisioning profile, not
+an unsigned public release. No game files or signing credentials are committed.
+The first-launch on-device installer is still being developed.
+
 ## Saves and mods
 
 Install mod folders through **Files > StS2 JIT > mods** while the app is closed.
