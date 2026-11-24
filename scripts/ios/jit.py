@@ -192,6 +192,78 @@ def build_game(cfg, steam, host):
     run("codesign", "--force", "--sign", identity, "--entitlements", entitlements, app)
 
 
+
+def build_shell_unsigned(cfg, host):
+    """Build an unsigned, game-free iOS shell that downloads the user's Steam game.
+
+    The Mono JIT runtime remains exactly the patched alias-memory backend used
+    by signed builds. Compile-only API stubs are never distributed.
+    """
+    from prepare_xcode import prepare
+
+    libraries = native_libraries()
+    framework = host / "StS2/dylibs/sts2.framework"
+    framework.mkdir(parents=True, exist_ok=True)
+    sdk = subprocess.check_output(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], text=True).strip()
+    run("xcrun", "clang++", "-dynamiclib", "-arch", "arm64", "-isysroot", sdk,
+        "-miphoneos-version-min=16.0", "-std=c++17", "-fobjc-arc", "-O2",
+        "-I" + str(PACK / "native/include/mono-2.0"),
+        ROOT / "ios/jit/RuntimeHost.mm", ROOT / "ios/jit/MonoJitMemory.mm",
+        *["-Wl,-force_load," + str(library) for library in libraries],
+        "-framework", "Foundation", "-framework", "Security", "-lz", "-liconv",
+        "-Wl,-install_name,@rpath/sts2.framework/sts2", "-o", framework / "sts2")
+    prepare(host, cfg, 0)  # No embedded or pre-prepared game content.
+    run("xcodebuild", "-project", host / "StS2.xcodeproj", "-scheme", "StS2",
+        "-configuration", "Release", "-destination", "generic/platform=iOS",
+        "-derivedDataPath", DERIVED, "CODE_SIGNING_ALLOWED=NO",
+        "CODE_SIGNING_REQUIRED=NO", "DEVELOPMENT_TEAM=", "build")
+    app = APP
+    if not (app / "Info.plist").is_file():
+        raise SystemExit("Unsigned Xcode build did not create StS2.app")
+
+    managed = app / "Managed"
+    if managed.exists():
+        shutil.rmtree(managed)
+    managed.mkdir()
+    runtime = PACK / "lib/net9.0"
+    if not runtime.is_dir():
+        raise SystemExit("Pinned iOS Mono framework assembly pack is missing")
+    for assembly in runtime.glob("*.dll"):
+        shutil.copy2(assembly, managed / assembly.name)
+    for name in ("STS2JitSupport", "STS2Jit", "STS2SteamBootstrap"):
+        command = [DOTNET, "build", ROOT / "src" / name, "-c", "Release", "-o", managed]
+        if name == "STS2Jit":
+            command.append("-p:UseGameStub=true")
+        run(*command)
+
+    # The public compile-time 'sts2' stub is never installed. The authentic
+    # assembly is downloaded with SteamKit2 after account ownership checks.
+    (managed / "sts2.dll").unlink(missing_ok=True)
+    # The original app's adapter knows how to make CoreLib report executable
+    # dynamic-code support to Harmony on the patched Mono backend. Unlike the
+    # Mac game build, there is no Harmony to adapt yet; Steam supplies it later.
+    run(DOTNET, "build", ROOT / "src/STS2JitPrepare", "-c", "Release")
+    prepare_adapter = ROOT / "src/STS2JitPrepare/bin/Release/net9.0/STS2JitPrepare.dll"
+    run(DOTNET, prepare_adapter, "corelib", PACK / "native/System.Private.CoreLib.dll",
+        managed / "STS2JitSupport.dll", managed / "System.Private.CoreLib.dll")
+
+    for library in (PACK / "native").glob("libSystem.*.dylib"):
+        destination = app / "Frameworks" / library.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(library, destination)
+
+    required = ("STS2Jit.dll", "STS2JitSupport.dll", "STS2SteamBootstrap.dll",
+                "STS2SteamDownloads.dll", "SteamKit2.dll", "Mono.Cecil.dll",
+                "System.Private.CoreLib.dll", "GodotSharp.dll")
+    missing = [name for name in required if not (managed / name).is_file()]
+    if missing:
+        raise SystemExit("Unsigned host is missing managed runtime dependencies: " + ", ".join(missing))
+    forbidden = [name for name in ("sts2.dll", "release_info.json", "Slay the Spire 2.pck",
+                                   "StS2.pck") if (managed / name).exists() or (app / name).exists()]
+    if forbidden:
+        raise SystemExit("Game asset leaked into unsigned IPA build: " + ", ".join(forbidden))
+    print(f"Game-free unsigned iOS host built at {app}; live Mono JIT and SteamKit2 retained.")
+
 def install_game(cfg, push_content=False, mods=None):
     if push_content and not (CACHE / "StS2.pck").is_file():
         raise SystemExit("Prepare content first with scripts/ios/build.py content")
