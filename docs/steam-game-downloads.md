@@ -1,104 +1,126 @@
-# On-device Steam game-file downloads (first milestone)
+# SteamKit2 first-launch installation and Mono JIT game boot (experimental)
 
-This feature is under development on `feature/steamkit2-integration`.
-It downloads owned **Slay the Spire 2** game inputs directly from Steam to the iPad
-or iPhone and verifies the downloaded bytes. It does **not yet** prepare a playable
-PCK or permit a clean first launch without the existing Mac preparation process.
+Branch: `feature/steamkit2-integration`. This is a **source-tested prototype**.
+A full unsigned iOS IPA build and physical-device Steam sign-in/download/boot
+have not yet been verified. Do not call it a finished or supported release.
 
-## Using the downloader
+## Architecture
 
-1. Install and launch the existing JIT build with a prepared game as described in
-   [Build and install](building.md). This limitation will be addressed in the next milestone.
-2. In the running game, open **iOS > Steam Cloud** (the panel title now also mentions
-   game files). Tap **Connect Steam**, scan the QR code with the Steam app and approve
-   the login. A saved Keychain session can also be restored.
-3. Tap **Download owned game files from Steam**. The app checks your ownership
-   ticket using SteamKit2, looks up the current **stable** (`public`) manifest
-   for app 2868840 / macOS ARM64 depot 2868842, and downloads its required files.
-4. Watch the status for progress. **Cancel download** or closing the panel stops the
-   operation; return and download again to resume. Do not force-quit while files
-   are being written if you can avoid it.
-5. After completion, the checked files and `download-complete.json` live in
-   **Files > On My iPad > StS2 JIT > steam-game-downloads > <manifest ID>**.
-   Only a completely verified download has the completion marker.
+The unsigned IPA contains the Godot host, patched Mono 9 JIT, managed
+SteamKit2 login/downloader, Godot PCK preparer, live Harmony mod hooks, FMOD/
+Spine iOS extensions, and public .NET libraries. **It does not contain
+Slay the Spire 2 game files**. The `STS2GameStub` project's fake `sts2.dll`
+exists only at compile time, and is removed from the packaged app.
 
-The downloader fetches the same game inputs selected by the reference project's
-`GameLayout`: release information, the original Godot PCK, the game assembly,
-the reporting SDK assemblies when present, and the Steamworks/SmartFormat DLLs.
-It does not download unnecessary desktop executables or other depots.
+First launch is deliberately handled by UIKit **before** Godot's game PCK is
+loaded, because the original `JitGate` cannot initialize the game engine with
+a missing PCK. The user must enable JIT for the app using a compatible debugger
+or JIT tool. The gate then calls `sts2_bootstrap_start`, which initializes the
+same patched Mono runtime that the game uses.
 
-## Integrity and privacy
+The managed bootstrap:
 
-- A SteamKit2 connection uses the Steam refresh token already held in the
-  device-only iOS Keychain. The token and login secrets are not stored in the
-  staging folder or included in download receipts.
-- An ownership ticket is required before requesting the protected depot key.
-- Only HTTPS content servers whose hostnames meet the port/domain policy are
-  selected. No redirect or alternate Steam CDN URL is followed by the downloader.
-- Every downloaded chunk is checked using the Steam manifest checksum, and every
-  completed file is checked using its manifest SHA-1. A failed file is not
-  published as complete.
-- Downloads write only into `steam-game-downloads/<manifest ID>/`, preserving
-  `Documents/StS2.pck`, active managed assemblies, save profiles and mods.
-  A different game manifest uses a different directory.
-- Interrupted downloads leave `.partial` files. Subsequent runs verify and
-  reuse intact chunks, fetch missing ones and remove partials only after
-  successful whole-file verification. No game assets are checked into Git.
+1. Shows a SteamKit2 QR code for approval with the Steam app on another device
+   (or reuses the existing Keychain refresh token)
+2. Obtains an ownership ticket for Steam app `2868840` and retrieves the
+   current stable macOS ARM64 depot `2868842`
+3. Downloads the original PCK and **all** managed DLLs, with checksum verification
+   and resumable partial chunks under `Documents/steam-game-downloads/<manifest>`
+4. Copies the original PCK, removes its desktop Sentry extension and autoload,
+   and adds C# script placeholders at the exact `res://` resource paths
+5. Copies the original managed assemblies to the manifest-specific install
+   directory, and adapts the tested Harmony 2.4.2 DLL to call the patched
+   Mono JIT executable-memory alias and native method-detour backend
+6. Atomically publishes `Documents/StS2.pck` and, **last**, a
+   `Documents/StS2.ready.json` installation marker
 
-Downloading roughly a gigabyte or more requires free storage and a reliable
-connection. The current UI does not calculate free space ahead of time; an
-insufficient-space error can leave a resumable partial download.
+The app then asks to be **fully closed and reopened**. JIT must be enabled
+again. The gate validates the ready marker and prepared PCK before asking
+Godot to load `user://StS2.pck`. `RuntimeHost` adds the installed original
+`sts2.dll` and adapted `0Harmony.dll` to the managed runtime assembly
+search path and runs the usual `STS2Jit.Entry.Start` Harmony patches.
 
-## What's still needed
+These steps are wired in source but **have not yet demonstrated a complete
+real-device game boot**.
 
-The existing iOS host's startup gate requires a pre-prepared, version-pinned
-`Documents/StS2.pck`, and the app build embeds managed game assemblies copied
-from a Mac. To make downloads usable at **first launch**, the bootstrap and
-managed runtime need to start an independent launcher without those inputs, and
-on-device PCK preparation, compatibility checking and safe activation must be
-added. That work is **not** part of this first downloader commit.
+## Dynamic mods are required
 
-Steam Cloud imports still use the original HTTPS/WebSocket implementation.
-This feature does not add Cloud uploads, Workshop browsing or an unsigned IPA
-build workflow.
+This target deliberately keeps the original **JIT-enabled** Mono runtime.
+Harmony must be able to patch managed game methods while it is running.
+Unlike the reference's no-JIT executable, code mods are **not** limited to
+patches woven in ahead of time. The original game's mod manager and
+`Documents/mods` scan redirection stay in `STS2Jit/Entry.cs`.
 
-## Developer checks
+The unsigned game-free build currently includes a **minimal** set of mobile
+Harmony platform/audio hooks to avoid compiling the full UI against a private
+game binary. The older local Mac build still has the complete mobile/cloud/LAN
+UI. Expanded hook compatibility will require device validation.
 
-The downloader is kept in an independent project to make its network and chunk
-code testable without a copy of the commercial game:
+Mod code is trusted code with app privileges. Only install mods from
+developers you trust. The current first-launch pipeline checks the tested
+Harmony DLL's SHA-256 and refuses unknown variants rather than applying
+potentially dangerous JIT detour patches.
+
+## Unsigned GitHub Actions IPA
+
+The [Build unsigned SteamKit2 JIT IPA](../.github/workflows/build-ipa.yml)
+workflow uses a GitHub-hosted Apple Silicon macOS/Xcode runner. It needs **no
+Apple developer team ID, no signing certificate, and no Steam game installation
+or account credentials**. It builds from public source and pinned public
+build tools:
 
 ```sh
-dotnet build src/STS2SteamDownloads/STS2SteamDownloads.csproj -c Release
-dotnet run --project tests/steam-downloader/SteamDownloaderTests.csproj -c Release
+python3 scripts/ios/bootstrap.py
+python3 scripts/ios/build.py runtime
+python3 scripts/ios/build.py build-shell
+python3 scripts/ios/scan_unsigned_ipa.py --app .cache/xcode-jit/Build/Products/Release-iphoneos/StS2.app
+python3 scripts/ios/package_ipa.py --app .cache/xcode-jit/Build/Products/Release-iphoneos/StS2.app --output dist/StS2-JIT-unsigned.ipa --unsigned
+python3 scripts/ios/scan_unsigned_ipa.py --ipa dist/StS2-JIT-unsigned.ipa
 ```
 
-The offline tests exercise completed-download reuse, bad-file repair, partial
-chunk reuse, cancellation and the CDN allowlist without reaching Steam.
-Actual login, ownership, CDN connectivity and on-device file sharing still
-require a physical device and a real account that owns the game.
+The workflow then checks the SHA-256 checksum and uploads the
+`StS2-JIT-unsigned.ipa` and its `.sha256` file as a run artifact **if
+all steps succeed**. The artifact is unsigned; iOS will not run it until the
+player signs it with their own Apple ID via a sideloading tool.
 
-The initial depot implementation was adapted from the separate
-[reference launcher](https://github.com/kollier-p/sts2-ios-launcher-public/tree/feature/steam-workshop-browser),
-under its MIT licence. Only the *target* repository is changed.
+For a local unsigned build, create `ios/config.local.json` with a dummy
+`team_id` (e.g. `0000000000`) and a stable `bundle_id`; no signing
+identity is needed. Full Xcode is still required. Keep the same bundle ID
+when updating to preserve installed game, saves and Keychain data.
 
-## Signed IPA workflow
+## Safety and testing
 
-The manual **Build signed iOS IPA** GitHub Actions workflow packages the final
-signed Xcode app as `StS2-JIT.ipa`, validates the archive and signature, and
-uploads it along with a SHA-256 checksum as a workflow artifact.
+- Steam game bytes and credentials are never checked into this source tree
+  or included in the unsigned IPA.
+- The launcher checks Steam ownership before requesting depot content.
+- The downloader verifies Steam chunks and completed files. Interrupted
+  transfers are resumable from checked chunks.
+- The preparer works from a source copy, uses bounded index parsing, and
+  publishes a complete PCK atomically.
+- Activation verifies any leftover unmarked game content byte-for-byte before
+  resuming, and refuses mismatched or unrelated installed files.
+- The native runtime verifies executable-memory/JIT permission before running
+  Mono, and the game-specific Harmony adapter only modifies known matching DLLs.
+- CI tests cover Steam depot integrity/recovery, synthetic pack preparation,
+  game activation, JIT source contracts, and unsigned IPA packaging.
 
-It requires a **trusted, self-hosted Apple Silicon Mac** with the runner labels
-`self-hosted`, `macOS`, `ARM64`, `sts2-ios-builder`, full Xcode, Apple
-development signing/provisioning, and the owner's Steam macOS ARM64 game installed
-at the default location. Configure GitHub Actions secrets `APPLE_TEAM_ID` and
-`IOS_BUNDLE_ID`; keep the bundle ID stable across upgrades. Start the workflow
-from the Actions tab with **Run workflow**. It does not run on untrusted pull
-requests, and GitHub-hosted Linux runners cannot build an iOS IPA.
+```sh
+dotnet build src/STS2SteamBootstrap/STS2SteamBootstrap.csproj -c Release
+dotnet build src/STS2Jit/STS2Jit.csproj -c Release -p:UseGameStub=true
+dotnet run --project tests/steam-downloader/SteamDownloaderTests.csproj -c Release
+python3 -m unittest discover -s scripts/ios -p 'test_unsigned_artifact.py'
+```
 
-The workflow is an implementation of the build pipeline, **not a guarantee that
-a signed IPA already exists**. It still embeds prepared game assemblies, depends
-on private game assets on the Mac, and does not yet implement a first-launch
-download/prepare/boot cycle. Artifacts can contain proprietary game assemblies;
-do not publish them or upload them to a public release. This project does not
-supply an unsigned, universally installable IPA. A signing identity and
-provisioning profile are required for an installable device build.
+### Still not validated
+
+A source compile is **not** evidence that the native unsigned IPA boots on
+the device. Pending: successful macOS hosted build artifact, actual Steam
+authentication and depot transfer, compatibility against Steam's current
+stable game build, native Godot/FM0D/Spine startup, and a live Harmony detour
+from a managed mod on physical iPhone/iPad hardware. iOS restricts JIT; an
+external JIT-enabling tool/debugger is still required at each launch.
+Device storage usage and network backgrounding also need stress testing.
+
+This implementation adapts the MIT-licensed SteamKit2 depot/network layer
+from the [reference project](https://github.com/kollier-p/sts2-ios-launcher-public/tree/feature/steam-workshop-browser)
+without importing its no-runtime-JIT limitation or modifying that repository.
