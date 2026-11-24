@@ -33,6 +33,8 @@ def package(app: Path, output: Path, bundle_id: str | None = None) -> str:
         raise ValueError("App is missing runtime frameworks")
 
     output = output.resolve()
+    if output.is_relative_to(app):
+        raise ValueError("IPA output cannot be inside the application bundle")
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=output.parent) as temp:
         staged = Path(temp) / "Payload" / app.name
