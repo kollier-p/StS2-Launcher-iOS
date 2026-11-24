@@ -2,6 +2,8 @@
 import hashlib
 from pathlib import Path
 import plistlib
+import os
+import stat
 import tempfile
 import unittest
 import zipfile
@@ -23,6 +25,8 @@ class PackageIpaTests(unittest.TestCase):
             (app / "StS2").write_bytes(b"fake executable")
             (app / "_CodeSignature/CodeResources").write_bytes(b"fake signature")
             (app / "Managed/STS2Jit.dll").write_bytes(b"fake JIT assembly")
+            (app / "Frameworks/actual.dylib").write_bytes(b"framework")
+            (app / "Frameworks/current.dylib").symlink_to("actual.dylib")
             output = base / "dist" / "StS2-JIT.ipa"
             digest = package(app, output, "dev.example.sts2")
             self.assertEqual(hashlib.sha256(output.read_bytes()).hexdigest(), digest)
@@ -31,6 +35,9 @@ class PackageIpaTests(unittest.TestCase):
             with zipfile.ZipFile(output) as archive:
                 self.assertIsNone(archive.testzip())
                 self.assertIn("Payload/StS2.app/Managed/STS2Jit.dll", archive.namelist())
+                link = archive.getinfo("Payload/StS2.app/Frameworks/current.dylib")
+                self.assertTrue(stat.S_ISLNK(link.external_attr >> 16))
+                self.assertEqual(archive.read(link), b"actual.dylib")
 
     def test_refuse_missing_signature_and_wrong_bundle(self):
         with tempfile.TemporaryDirectory() as root:
