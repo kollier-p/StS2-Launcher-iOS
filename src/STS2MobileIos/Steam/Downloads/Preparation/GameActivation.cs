@@ -64,15 +64,18 @@ public static class GameActivation
                     if (file != file.Trim() || file.Contains('/') || file.Contains('\\'))
                         throw new InvalidDataException("The depot contains an invalid assembly name.");
                     string target = Path.Combine(managedTmp, file);
-                    File.Copy(source, target, overwrite: false);
-                    // File copying can fail silently if the disk fills. Hash the
-                    // installed DLL before publishing its directory.
+                    // The Steam layout stores a few DLLs both in its managed
+                    // directory and as separately requested top-level files.
+                    // They must be byte-identical; never let duplicate names
+                    // silently shadow a different assembly.
                     byte[] hash = await Task.Run(() => SHA256.HashData(File.ReadAllBytes(source)),
                         cancellation).ConfigureAwait(false);
+                    if (!File.Exists(target))
+                        File.Copy(source, target, overwrite: false);
                     byte[] copied = await Task.Run(() => SHA256.HashData(File.ReadAllBytes(target)),
                         cancellation).ConfigureAwait(false);
                     if (!hash.AsSpan().SequenceEqual(copied))
-                        throw new InvalidDataException("A game assembly changed during copying.");
+                        throw new InvalidDataException("Two Steam game assemblies share a name but have different contents.");
                 }
             }
 
