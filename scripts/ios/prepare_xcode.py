@@ -66,6 +66,7 @@ def prepare(build, config, content_size):
     info_path.write_bytes(plistlib.dumps(info))
 
     shutil.copy2(ROOT / "ios/jit/JitGate.mm", build / "StS2/JitGate.mm")
+    shutil.copy2(ROOT / "ios/jit/SteamSetupGate.mm", build / "StS2/SteamSetupGate.mm")
     dummy = build / "StS2/dummy.cpp"
     content = dummy.read_text()
     if "load_all_fmod_plugins" not in content:
@@ -81,5 +82,7 @@ unsigned int *load_all_fmod_plugins(void *, unsigned int *count) {
         content += '\n#include "Sts2Native.mm"\n'
     if '#include "JitGate.mm"' not in content:
         content += '\n#include "JitGate.mm"\n'
+    if '#include "SteamSetupGate.mm"' not in content:
+        content += '\n#include "SteamSetupGate.mm"\n'
     dummy.write_text(content)
     print("Prepared Mono JIT framework, startup gate and native extensions")
