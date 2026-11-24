@@ -30,7 +30,6 @@ static class Checks
                 SHA1.HashData(block), DepotChunk.AdlerHash(block),
                 (ulong)at, (uint)block.Length / 2, (uint)block.Length));
         }
-        result.FileHash = SHA1.HashData(bytes);
         return result;
     }
 
