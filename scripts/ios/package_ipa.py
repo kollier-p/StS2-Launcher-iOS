@@ -6,6 +6,8 @@ An IPA is a ZIP containing Payload/<App>.app, not the temporary Godot export.
 """
 import argparse
 import hashlib
+import os
+import stat
 from pathlib import Path
 import plistlib
 import shutil
@@ -44,12 +46,17 @@ def package(app: Path, output: Path, bundle_id: str | None = None) -> str:
         with zipfile.ZipFile(temporary, "w", allowZip64=True) as archive:
             for item in sorted((Path(temp) / "Payload").rglob("*")):
                 if item.is_symlink():
-                    # Zip archives cannot safely preserve an iOS framework symlink
-                    # with the Python zipfile defaults. Resolve links within the app.
+                    # Apple frameworks contain symlinked Versions/Current,
+                    # Headers and binary names. Preserve the links as Unix
+                    # symlink ZIP entries instead of dereferencing them.
                     target = item.resolve()
                     if not target.is_relative_to(staged.resolve()):
                         raise ValueError("App contains a symlink escaping its bundle")
-                    archive.write(target, item.relative_to(temp))
+                    link = zipfile.ZipInfo(str(item.relative_to(temp)))
+                    link.create_system = 3
+                    link.external_attr = (stat.S_IFLNK | 0o777) << 16
+                    link.compress_type = zipfile.ZIP_STORED
+                    archive.writestr(link, os.readlink(item))
                 elif item.is_file():
                     archive.write(item, item.relative_to(temp))
         with zipfile.ZipFile(temporary) as archive:
