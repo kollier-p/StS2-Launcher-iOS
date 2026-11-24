@@ -65,9 +65,16 @@ internal sealed class SteamCloudPanel
         _connect = Button(actions, "Connect Steam", () => Run(Connect));
         _refresh = Button(actions, "Refresh saves", () => Run(Refresh));
         _disconnect = Button(actions, "Disconnect", Disconnect);
-        _downloadGame = Button(actions, "Download game files", () => Run(DownloadGame));
-        _cancelOperation = Button(actions, "Cancel operation", () => _operation?.Cancel());
         Button(actions, "Close", Close);
+        var gameActions = new HBoxContainer();
+        gameActions.AddThemeConstantOverride("separation", 12);
+        column.AddChild(gameActions);
+        _downloadGame = Button(gameActions, "Download owned game files from Steam", () => Run(DownloadGame));
+        _cancelOperation = Button(gameActions, "Cancel download", () => _operation?.Cancel());
+        column.AddChild(new Label {
+            Text = "Steam game files are downloaded and verified into a separate folder. This stage does not change the active game or saves.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        });
         _qr = new TextureRect { Visible = false, CustomMinimumSize = new Vector2(280, 280),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
             TextureFilter = CanvasItem.TextureFilterEnum.Nearest };
