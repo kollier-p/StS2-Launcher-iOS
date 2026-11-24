@@ -80,3 +80,25 @@ require a physical device and a real account that owns the game.
 The initial depot implementation was adapted from the separate
 [reference launcher](https://github.com/kollier-p/sts2-ios-launcher-public/tree/feature/steam-workshop-browser),
 under its MIT licence. Only the *target* repository is changed.
+
+## Signed IPA workflow
+
+The manual **Build signed iOS IPA** GitHub Actions workflow packages the final
+signed Xcode app as `StS2-JIT.ipa`, validates the archive and signature, and
+uploads it along with a SHA-256 checksum as a workflow artifact.
+
+It requires a **trusted, self-hosted Apple Silicon Mac** with the runner labels
+`self-hosted`, `macOS`, `ARM64`, `sts2-ios-builder`, full Xcode, Apple
+development signing/provisioning, and the owner's Steam macOS ARM64 game installed
+at the default location. Configure GitHub Actions secrets `APPLE_TEAM_ID` and
+`IOS_BUNDLE_ID`; keep the bundle ID stable across upgrades. Start the workflow
+from the Actions tab with **Run workflow**. It does not run on untrusted pull
+requests, and GitHub-hosted Linux runners cannot build an iOS IPA.
+
+The workflow is an implementation of the build pipeline, **not a guarantee that
+a signed IPA already exists**. It still embeds prepared game assemblies, depends
+on private game assets on the Mac, and does not yet implement a first-launch
+download/prepare/boot cycle. Artifacts can contain proprietary game assemblies;
+do not publish them or upload them to a public release. This project does not
+supply an unsigned, universally installable IPA. A signing identity and
+provisioning profile are required for an installable device build.
