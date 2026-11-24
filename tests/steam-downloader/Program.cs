@@ -99,6 +99,7 @@ static class Checks
                 "Steam proxy route was accepted");
 
             await PackPreparationChecks.RunAsync();
+            await GameActivationChecks.RunAsync();
             Console.WriteLine("Steam downloader checks passed: hashes, resume, corruption, cancellation and CDN policy.");
         }
         finally { Directory.Delete(directory, recursive: true); }
