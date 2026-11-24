@@ -179,7 +179,9 @@ def build_game(cfg, steam, host):
     for directory in (PACK / "lib/net9.0", ROOT / "upstream/game-refs"):
         for assembly in directory.glob("*.dll"):
             shutil.copy2(assembly, managed / assembly.name)
-    for name in ("STS2JitSupport", "STS2Jit"):
+    for name in ("STS2JitSupport", "STS2Jit", "STS2SteamBootstrap"):
+        # The standalone SteamKit2 bootstrap and its transitive dependencies
+        # must be available before any game files have been downloaded.
         run(DOTNET, "build", ROOT / "src" / name, "-c", "Release", "-o", managed)
     prepare_adapters(managed)
     for library in (PACK / "native").glob("libSystem.*.dylib"):
