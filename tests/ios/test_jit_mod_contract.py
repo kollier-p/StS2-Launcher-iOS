@@ -31,8 +31,9 @@ class JitModContract(unittest.TestCase):
         source = read("scripts/ios/jit.py")
         self.assertIn('MonoJitMemory', source)
         self.assertIn('RuntimeHost.mm', source)
-        self.assertIn('JitGate.mm', source)
-        self.assertIn('STS2Jit.dll', source)
+        self.assertIn('DISABLE_JIT=OFF', source)
+        self.assertIn('DISABLE_REFLECTION_EMIT=OFF', source)
+        self.assertIn('prepare_adapters(managed)', source)
 
     def test_harmony_is_not_removed_from_game_boot(self):
         source = read("src/STS2Jit/Entry.cs")
