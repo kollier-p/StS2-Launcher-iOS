@@ -71,12 +71,40 @@ static void ForwardLifecycle(id service, SEL selector, UIApplication *applicatio
     self.notice.font = [UIFont preferredFontForTextStyle:UIFontTextStyleTitle3];
     self.notice.textAlignment = NSTextAlignmentCenter;
     self.notice.numberOfLines = 0;
-    [controller.view addSubview:self.notice];
+    UIScrollView *scroll = [UIScrollView new];
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    [controller.view addSubview:scroll];
+    UIStackView *stack = [UIStackView new];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.alignment = UIStackViewAlignmentCenter;
+    stack.spacing = 12;
+    [scroll addSubview:stack];
+    [stack addArrangedSubview:self.notice];
+    self.qr = [UIImageView new];
+    self.qr.translatesAutoresizingMaskIntoConstraints = NO;
+    self.qr.contentMode = UIViewContentModeScaleAspectFit;
+    self.qr.hidden = YES;
+    [stack addArrangedSubview:self.qr];
+    self.retry = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.retry setTitle:@"Retry Steam setup" forState:UIControlStateNormal];
+    [self.retry addTarget:self action:@selector(beginBootstrap) forControlEvents:UIControlEventTouchUpInside];
+    self.retry.hidden = YES;
+    [stack addArrangedSubview:self.retry];
     UILayoutGuide *area = controller.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [self.notice.centerYAnchor constraintEqualToAnchor:area.centerYAnchor],
-        [self.notice.leadingAnchor constraintEqualToAnchor:area.leadingAnchor constant:24],
-        [self.notice.trailingAnchor constraintEqualToAnchor:area.trailingAnchor constant:-24],
+        [scroll.topAnchor constraintEqualToAnchor:area.topAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:area.bottomAnchor],
+        [scroll.leadingAnchor constraintEqualToAnchor:area.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:area.trailingAnchor],
+        [stack.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor constant:18],
+        [stack.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor constant:-18],
+        [stack.leadingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.trailingAnchor],
+        [stack.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor],
+        [self.notice.widthAnchor constraintEqualToAnchor:stack.widthAnchor constant:-48],
+        [self.qr.widthAnchor constraintEqualToConstant:220],
+        [self.qr.heightAnchor constraintEqualToConstant:220],
     ]];
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.window.rootViewController = controller;
