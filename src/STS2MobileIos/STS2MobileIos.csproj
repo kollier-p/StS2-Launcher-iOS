@@ -21,8 +21,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Steam's protocol, depot manifest and CDN client; copied alongside the JIT hook assembly. -->
-    <PackageReference Include="SteamKit2" Version="3.4.0" />
+    <!-- Game download protocol lives in its own buildable, game-independent project. -->
+    <Compile Remove="Steam/Downloads/**/*.cs" />
+    <ProjectReference Include="../STS2SteamDownloads/STS2SteamDownloads.csproj" />
   </ItemGroup>
 
 </Project>
