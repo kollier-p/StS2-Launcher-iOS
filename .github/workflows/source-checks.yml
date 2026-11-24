@@ -38,6 +38,8 @@ jobs:
         run: dotnet build src/STS2SteamBootstrap/STS2SteamBootstrap.csproj -c Release
       - name: Test SteamKit2 downloader without contacting Steam
         run: dotnet run --project tests/steam-downloader/SteamDownloaderTests.csproj -c Release
+      - name: Build JIT game hooks against nonshipping game API stubs
+        run: dotnet build src/STS2Jit/STS2Jit.csproj -c Release -p:UseGameStub=true
       - name: Build JIT dependency adapters
         run: dotnet build src/STS2JitPrepare -c Release
       - name: Build JIT support library
