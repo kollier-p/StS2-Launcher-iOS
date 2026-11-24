@@ -236,6 +236,17 @@ def build_shell_unsigned(cfg, host):
             command.append("-p:UseGameStub=true")
         run(*command)
 
+    # The Godot API is a public NuGet dependency, not a game asset. In some
+    # MSBuild configurations ProjectReference Private=false means this DLL is
+    # resolved for compilation but omitted from the -o output; copy the
+    # matching restored package explicitly if necessary.
+    if not (managed / "GodotSharp.dll").is_file():
+        godot_packages = Path.home() / ".nuget/packages/godotsharp/4.5.1/lib"
+        candidates = sorted(godot_packages.glob("net*/GodotSharp.dll"))
+        if len(candidates) != 1:
+            raise SystemExit("Expected one public GodotSharp 4.5.1 NuGet assembly; restore the game-free hooks first")
+        shutil.copy2(candidates[0], managed / "GodotSharp.dll")
+
     # The public compile-time 'sts2' stub is never installed. The authentic
     # assembly is downloaded with SteamKit2 after account ownership checks.
     (managed / "sts2.dll").unlink(missing_ok=True)
