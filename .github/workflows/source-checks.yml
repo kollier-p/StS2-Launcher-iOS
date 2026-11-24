@@ -34,6 +34,8 @@ jobs:
         run: dotnet run --project tests/features/FeatureTests.csproj -c Release
       - name: Build SteamKit2 game downloader without game assets
         run: dotnet build src/STS2SteamDownloads/STS2SteamDownloads.csproj -c Release
+      - name: Build independent first-launch SteamKit2 bootstrap
+        run: dotnet build src/STS2SteamBootstrap/STS2SteamBootstrap.csproj -c Release
       - name: Test SteamKit2 downloader without contacting Steam
         run: dotnet run --project tests/steam-downloader/SteamDownloaderTests.csproj -c Release
       - name: Build JIT dependency adapters
