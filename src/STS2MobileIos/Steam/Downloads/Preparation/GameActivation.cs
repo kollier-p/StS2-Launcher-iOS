@@ -15,7 +15,7 @@ public static class GameActivation
     public sealed record Ready(ulong Manifest, long PackBytes, string AssemblySha256);
 
     public static async Task<Ready> ActivateAsync(string staging, string documents, ulong manifest,
-        string preparedPack, CancellationToken cancellation)
+        string preparedPack, CancellationToken cancellation, Action<string, string>? adaptHarmony = null)
     {
         documents = Path.GetFullPath(documents);
         string manifestString = manifest.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -79,6 +79,11 @@ public static class GameActivation
             if (!File.Exists(Path.Combine(managedTmp, "sts2.dll")) ||
                 !File.Exists(Path.Combine(managedTmp, "0Harmony.dll")))
                 throw new InvalidDataException("The Steam depot is missing required game or Harmony code.");
+            // This is the critical runtime-Harmony step: patch the downloaded
+            // game-matched Harmony copy to use sts2_jit_patch, while retaining
+            // the untouched Steam original in the depot staging folder.
+            adaptHarmony?.Invoke(Path.Combine(staging, "original", "0Harmony.dll"),
+                Path.Combine(managedTmp, "0Harmony.dll"));
             if (Directory.Exists(installedManaged))
                 throw new InvalidOperationException("An uncommitted managed game installation exists.");
             Directory.Move(managedTmp, installedManaged);
