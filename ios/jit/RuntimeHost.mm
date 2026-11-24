@@ -120,11 +120,12 @@ static bool InitializeRuntime() {
     if (installed) {
         for (NSString *file in [NSFileManager.defaultManager contentsOfDirectoryAtPath:installed error:nil]) {
             if (![file.pathExtension isEqualToString:@"dll"]) continue;
-            if ([known containsObject:file] && ![file isEqualToString:@"sts2.dll"]) continue;
-            if ([file isEqualToString:@"sts2.dll"]) {
+            BOOL gameOrHarmony = [file isEqualToString:@"sts2.dll"] || [file isEqualToString:@"0Harmony.dll"];
+            if ([known containsObject:file] && !gameOrHarmony) continue;
+            if (gameOrHarmony) {
                 NSIndexSet *duplicates = [assemblies indexesOfObjectsPassingTest:
                     ^BOOL(NSString *path, NSUInteger index, BOOL *stop) {
-                        return [path.lastPathComponent isEqualToString:@"sts2.dll"];
+                        return [path.lastPathComponent isEqualToString:file];
                     }];
                 [assemblies removeObjectsAtIndexes:duplicates];
             }
