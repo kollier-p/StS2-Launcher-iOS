@@ -216,7 +216,8 @@ def build_shell_unsigned(cfg, host):
     run("xcodebuild", "-project", host / "StS2.xcodeproj", "-scheme", "StS2",
         "-configuration", "Release", "-destination", "generic/platform=iOS",
         "-derivedDataPath", DERIVED, "CODE_SIGNING_ALLOWED=NO",
-        "CODE_SIGNING_REQUIRED=NO", "DEVELOPMENT_TEAM=", "build")
+        "CODE_SIGNING_REQUIRED=NO", "STRIP_STYLE=non-global",
+        "DEVELOPMENT_TEAM=", "build")
     app = APP
     if not (app / "Info.plist").is_file():
         raise SystemExit("Unsigned Xcode build did not create StS2.app")
