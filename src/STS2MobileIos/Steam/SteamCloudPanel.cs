@@ -70,7 +70,7 @@ internal sealed class SteamCloudPanel
         gameActions.AddThemeConstantOverride("separation", 12);
         column.AddChild(gameActions);
         _downloadGame = Button(gameActions, "Download owned game files from Steam", () => Run(DownloadGame));
-        _cancelOperation = Button(gameActions, "Cancel download", () => _operation?.Cancel());
+        _cancelOperation = Button(gameActions, "Cancel operation", () => _operation?.Cancel());
         column.AddChild(new Label {
             Text = "Steam game files are downloaded and verified into a separate folder. This stage does not change the active game or saves.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
@@ -287,8 +287,9 @@ internal sealed class SteamCloudPanel
         _operation = source;
         UpdateButtons();
         try { await operation(source.Token); }
-        catch (OperationCanceledException) { _status.Text = "Connection cancelled or timed out. Try again when ready."; }
+        catch (OperationCanceledException) { _status.Text = "Operation cancelled. Any verified game chunks are kept for resuming."; }
         catch (HttpRequestException) { _status.Text = "Cannot reach Steam. Check your connection and try again."; }
+        catch (IOException) { _status.Text = "Could not save downloaded files. Check free space; you can resume the game download later."; }
         catch (Exception error)
         {
             _status.Text = error is InvalidOperationException or InvalidDataException or UnauthorizedAccessException ? error.Message
