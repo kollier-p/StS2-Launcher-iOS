@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>sts2</AssemblyName>
+    <RootNamespace>MegaCrit.Sts2</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <NoWarn>$(NoWarn);CS0108;CS0114;CS0649;CS1591</NoWarn>
+    <!-- Only a compile-time API surface. NEVER package this stub DLL in the IPA. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="GodotSharp" Version="4.5.1" />
+  </ItemGroup>
+</Project>
