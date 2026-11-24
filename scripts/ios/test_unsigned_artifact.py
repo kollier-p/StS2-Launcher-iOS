@@ -18,6 +18,9 @@ class UnsignedArtifactTests(unittest.TestCase):
             "CFBundleExecutable": "StS2",
         }))
         (app / "StS2").write_bytes(b"unsigned host executable")
+        # Godot ships a tiny public bootstrap scene as StS2.pck even in a
+        # game-free build. It is not the Steam game content downloaded later.
+        (app / "StS2.pck").write_bytes(b"public Godot bootstrap resources")
         (app / "Frameworks/sts2.framework").mkdir()
         (app / "Frameworks/sts2.framework/sts2").write_bytes(b"patched JIT")
         for name in ("STS2Jit", "STS2JitSupport", "STS2SteamBootstrap",
@@ -47,6 +50,31 @@ class UnsignedArtifactTests(unittest.TestCase):
             (app / "Managed/sts2.dll").unlink()
             (app / "release_info.json").write_text("{}")
             with self.assertRaisesRegex(ValueError, "Commercial game"):
+                inspect_app(app)
+
+    def test_reject_oversized_or_extra_game_packs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            app = self.make_app(base)
+            with (app / "StS2.pck").open("wb") as stream:
+                stream.truncate(32 * 1024 * 1024 + 1)
+            with self.assertRaisesRegex(ValueError, "too large"):
+                inspect_app(app)
+            (app / "StS2.pck").write_bytes(b"public bootstrap again")
+            (app / "Slay the Spire 2.pck").write_bytes(b"fake game pack")
+            with self.assertRaisesRegex(ValueError, "Commercial game"):
+                inspect_app(app)
+            (app / "Slay the Spire 2.pck").unlink()
+            (app / "mods").mkdir()
+            (app / "mods/extra.pck").write_bytes(b"mod assets")
+            with self.assertRaisesRegex(ValueError, "Unexpected packaged"):
+                inspect_app(app)
+
+    def test_reject_missing_godot_bootstrap_pack(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(Path(directory))
+            (app / "StS2.pck").unlink()
+            with self.assertRaisesRegex(ValueError, "bootstrap StS2.pck is missing"):
                 inspect_app(app)
 
     def test_missing_bootstrap_refused(self):
