@@ -29,8 +29,26 @@ public static class PlatformPatches
         return false;
     }
 
-    public static bool CreateDirectoryPrefix(string directoryPath) =>
-        directoryPath.Contains("://", StringComparison.Ordinal);
+    // GodotFileIo.ResolvePath is an instance method on the downloaded game's
+    // class. Use reflection rather than a compile-time game type, while keeping
+    // the same full-path check as the original tested iPad patch.
+    public static bool CreateDirectoryPrefix(object __instance, string directoryPath)
+    {
+        if (__instance == null) return false;
+        var candidate = __instance.GetType()
+            .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Instance)
+            .FirstOrDefault(method => method.Name == "GetFullPath" &&
+                method.ReturnType == typeof(string) && method.GetParameters().Length == 1 &&
+                method.GetParameters()[0].ParameterType == typeof(string));
+        if (candidate == null) return false;
+        try
+        {
+            string? path = candidate.Invoke(__instance, [directoryPath]) as string;
+            return path?.Contains("://", StringComparison.Ordinal) == true;
+        }
+        catch (System.Reflection.TargetInvocationException) { return false; }
+    }
 }
 
 public static class GameHooks
