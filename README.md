@@ -23,7 +23,7 @@ code and tools, not game files or an IPA.
 | Local saves and app upgrades | Preserved when upgrading the same bundle ID |
 | Steam Cloud | QR login, downloads and vanilla import exercised on iPad; modded import has source tests, device validation pending; [guide](docs/steam-cloud.md) |
 | LAN multiplayer | Host/join, resume and Bonjour implemented; offline checks only; [guide](docs/multiplayer.md) |
-| On-device game download | Prepare content on a Mac |
+| On-device game-file download | SteamKit2 verified/resumable staging available from the in-game Steam panel; [first-launch setup is not yet supported](docs/steam-game-downloads.md) |
 | iPhone, simulator and App Store distribution | Not validated / not provided |
 
 ## Build and play
@@ -59,6 +59,12 @@ The Mac launch command enables JIT by attaching and detaching LLDB. A compatible
 external JIT tool can also activate the running app; see [JIT activation](docs/jit.md).
 A complete bootstrap on another clean Mac still needs independent validation.
 
+On this feature branch, the running game also offers **Steam > Download owned game files**
+under the in-game **iOS > Steam Cloud** panel. It stages a verified copy directly
+from Steam without replacing the active game or saves. For now, the original
+Mac preparation is still required to build and first launch the host; see
+[on-device game downloads](docs/steam-game-downloads.md) for details.
+
 ## Saves and mods
 
 Install mod folders through **Files > StS2 JIT > mods** while the app is closed.
@@ -88,6 +94,7 @@ See [save management](docs/saves.md) for backup coverage and compatibility limit
 - [Architecture and dependency versions](docs/architecture.md)
 - [Performance measurement](docs/performance.md)
 - [Steam Cloud](docs/steam-cloud.md)
+- [On-device Steam game-file download (in development)](docs/steam-game-downloads.md)
 - [LAN multiplayer](docs/multiplayer.md)
 - [Contributing](CONTRIBUTING.md)
 
