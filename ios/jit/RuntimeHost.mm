@@ -94,11 +94,49 @@ static bool InitializeRuntime() {
         if ([file.pathExtension isEqualToString:@"dll"])
             [assemblies addObject:[managed stringByAppendingPathComponent:file]];
     }
+    // The app can start without a game installed. On a later launch, use the
+    // verified manifest-scoped managed DLLs from Documents instead of bundling
+    // any proprietary game assembly in the IPA. Keep the host's iOS BCL first.
+    NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *ready = [documents stringByAppendingPathComponent:@"StS2.ready.json"];
+    NSData *readyData = [NSData dataWithContentsOfFile:ready];
+    NSDictionary *metadata = readyData ? [NSJSONSerialization JSONObjectWithData:readyData options:0 error:nil] : nil;
+    NSString *installed = nil;
+    if ([metadata isKindOfClass:NSDictionary.class]) {
+        NSNumber *manifest = metadata[@"Manifest"];
+        NSNumber *bytes = metadata[@"PackBytes"];
+        NSString *pack = [documents stringByAppendingPathComponent:@"StS2.pck"];
+        NSDictionary *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:pack error:nil];
+        if ([manifest respondsToSelector:@selector(unsignedLongLongValue)] && [bytes respondsToSelector:@selector(unsignedLongLongValue)]
+            && manifest.unsignedLongLongValue > 0 && bytes.unsignedLongLongValue > 0
+            && [attributes fileSize] == bytes.unsignedLongLongValue) {
+            NSString *identifier = [NSString stringWithFormat:@"%llu", manifest.unsignedLongLongValue];
+            installed = [documents stringByAppendingPathComponent:
+                [NSString stringWithFormat:@"steam-game-installs/%@/Managed", identifier]];
+        }
+    }
+    NSMutableSet<NSString *> *known = [NSMutableSet set];
+    for (NSString *path in assemblies) [known addObject:path.lastPathComponent];
+    if (installed) {
+        for (NSString *file in [NSFileManager.defaultManager contentsOfDirectoryAtPath:installed error:nil]) {
+            if (![file.pathExtension isEqualToString:@"dll"]) continue;
+            if ([known containsObject:file] && ![file isEqualToString:@"sts2.dll"]) continue;
+            if ([file isEqualToString:@"sts2.dll"]) {
+                NSIndexSet *duplicates = [assemblies indexesOfObjectsPassingTest:
+                    ^BOOL(NSString *path, NSUInteger index, BOOL *stop) {
+                        return [path.lastPathComponent isEqualToString:@"sts2.dll"];
+                    }];
+                [assemblies removeObjectsAtIndexes:duplicates];
+            }
+            [assemblies addObject:[installed stringByAppendingPathComponent:file]];
+        }
+    }
     NSString *tpa = [assemblies componentsJoinedByString:@":"];
+    NSString *appPaths = installed ? [managed stringByAppendingFormat:@":%@", installed] : managed;
     setenv("MONO_THREADS_SUSPEND", "preemptive", 1);
     const char *keys[] = {"TRUSTED_PLATFORM_ASSEMBLIES", "APP_PATHS", "APP_CONTEXT_BASE_DIRECTORY",
         "NATIVE_DLL_SEARCH_DIRECTORIES", "System.Globalization.Invariant", "System.Diagnostics.Tracing.EventSource.IsSupported"};
-    const char *values[] = {tpa.UTF8String, managed.UTF8String, managed.UTF8String,
+    const char *values[] = {tpa.UTF8String, appPaths.UTF8String, managed.UTF8String,
         frameworks.UTF8String, "false", "false"};
     int result = coreclr_initialize(nullptr, "StS2Jit", 6, keys, values, &runtime, &domain);
     if (result != 0) {
@@ -107,6 +145,21 @@ static bool InitializeRuntime() {
     }
     initialized = true;
     return true;
+}
+
+// Invoked by the native UIKit first-launch screen, before Godot has loaded.
+// The standalone SteamKit2 bootstrap must be present in bundle/Managed; it
+// downloads, verifies and prepares game assets without needing sts2.dll.
+extern "C" __attribute__((visibility("default"))) int sts2_bootstrap_start() {
+    if (!InitializeRuntime()) return -1;
+    int (*begin)() = nullptr;
+    int result = coreclr_create_delegate(runtime, domain, "STS2SteamBootstrap",
+        "STS2SteamBootstrap.Entry", "Begin", (void **)&begin);
+    if (result != 0 || !begin) {
+        fprintf(stderr, "[Bootstrap] Could not start standalone SteamKit2 installer: %x\n", result);
+        return result ?: -2;
+    }
+    return begin();
 }
 
 extern "C" __attribute__((visibility("default"))) bool godotsharp_game_main_init(
