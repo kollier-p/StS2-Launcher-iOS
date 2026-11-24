@@ -23,7 +23,7 @@ code and tools, not game files or an IPA.
 | Local saves and app upgrades | Preserved when upgrading the same bundle ID |
 | Steam Cloud | QR login, downloads and vanilla import exercised on iPad; modded import has source tests, device validation pending; [guide](docs/steam-cloud.md) |
 | LAN multiplayer | Host/join, resume and Bonjour implemented; offline checks only; [guide](docs/multiplayer.md) |
-| On-device game-file download | SteamKit2 verified/resumable staging available from the in-game Steam panel; [first-launch setup is not yet supported](docs/steam-game-downloads.md) |
+| On-device game-file download | **Experimental** SteamKit2 first-launch login, checked depot download, PCK preparation and JIT handoff implemented in source; complete real-device boot unverified; [guide](docs/steam-game-downloads.md) |
 | iPhone, simulator and App Store distribution | Not validated / not provided |
 
 ## Build and play
@@ -59,23 +59,32 @@ The Mac launch command enables JIT by attaching and detaching LLDB. A compatible
 external JIT tool can also activate the running app; see [JIT activation](docs/jit.md).
 A complete bootstrap on another clean Mac still needs independent validation.
 
-On this feature branch, the running game also offers **Steam > Download owned game files**
-under the in-game **iOS > Steam Cloud** panel. It stages a verified copy directly
-from Steam without replacing the active game or saves. For now, the original
-Mac preparation is still required to build and first launch the host; see
-[on-device game downloads](docs/steam-game-downloads.md) for details.
+On the `feature/steamkit2-integration` branch, there is now an **experimental
+game-free unsigned build** that starts its SteamKit2 login and downloader from
+the native iOS setup screen, before Godot is launched. It downloads your owned
+macOS ARM64 depot, prepares an iOS game PCK, and on the following launch tries
+to boot the game under the existing Mono JIT/Harmony mod runtime. This
+implementation has passed source tests but **has not yet been proven on a
+physical iPhone/iPad**. It still requires a compatible JIT tool/debugger at
+every app startup. Read [on-device Steam game setup](docs/steam-game-downloads.md)
+before trying it.
 
-## Signed IPA artifact (feature branch)
+## Unsigned IPA workflow (experimental branch)
 
-A manually triggered [Build signed iOS IPA](.github/workflows/build-ipa.yml)
-workflow builds the signed Xcode app on a trusted self-hosted Apple Silicon
-Mac and uploads `StS2-JIT.ipa` plus its SHA-256 checksum. The Mac must have
-Xcode, a signing identity, an owned Steam game installation and the required
-build tools; set the GitHub Actions secrets `APPLE_TEAM_ID` and
-`IOS_BUNDLE_ID`. See [workflow requirements](docs/steam-game-downloads.md#signed-ipa-workflow).
-The IPA is an installable **signed** build for its provisioning profile, not
-an unsigned public release. No game files or signing credentials are committed.
-The first-launch on-device installer is still being developed.
+The [Build unsigned SteamKit2 JIT IPA](.github/workflows/build-ipa.yml)
+workflow compiles the game-free launcher on a GitHub-hosted Apple Silicon
+runner, without Steam game files, signing certificates, an Apple team ID, or
+other secrets. If successful, it publishes the unsigned
+`StS2-JIT-unsigned.ipa` and its SHA-256 checksum as build artifacts. Use a
+sideloading tool (e.g. Sideloadly, AltStore or SideStore) to sign it with your
+own Apple ID before installing. The workflow is **not** a successful IPA
+release until it has completed and an artifact exists; gameplay must then be
+verified on real hardware.
+
+For a game-free unsigned build on your own Apple Silicon Mac, follow the
+[unsigned build steps](docs/steam-game-downloads.md#unsigned-github-actions-ipa).
+The older `prepare`, `content`, and `build` commands above remain the
+Mac-prepared signed game build path.
 
 ## Saves and mods
 
