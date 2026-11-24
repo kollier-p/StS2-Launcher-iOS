@@ -126,8 +126,11 @@ public static class GodotPackPreparation
         var result = new HashSet<string>(StringComparer.Ordinal);
         foreach (Match match in ScriptPaths.Matches(embedded))
         {
-            string script = match.Value[6..];
-            if (script.StartsWith('/') || script.Split('/').Any(s => s is "." or ".." or ""))
+            // Godot's packed C# script keys include the complete res://
+            // prefix. Stripping it would make scene script paths invisible.
+            string script = match.Value;
+            string relative = script[6..];
+            if (relative.StartsWith('/') || relative.Split('/').Any(s => s is "." or ".." or ""))
                 throw new InvalidDataException("The game assembly listed an unsafe script path.");
             result.Add(script);
             if (result.Count > MaxScripts)
