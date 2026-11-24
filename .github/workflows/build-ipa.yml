@@ -89,7 +89,7 @@ jobs:
             --bundle-id "$(python3 -c 'import json;print(json.load(open("ios/config.local.json"))["bundle_id"])')" \
             --unsigned
           python3 scripts/ios/scan_unsigned_ipa.py --ipa dist/StS2-JIT-unsigned.ipa
-          shasum -a 256 -c dist/StS2-JIT-unsigned.ipa.sha256
+          (cd dist && shasum -a 256 -c StS2-JIT-unsigned.ipa.sha256)
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
