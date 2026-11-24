@@ -78,13 +78,17 @@ def main():
             with (templates / "ios.zip").open("wb") as dst:
                 shutil.copyfileobj(src, dst)
     fmod = ROOT / "vendor/fmod-release"
-    if not (fmod / "fmod/libs/iOS/libfmodstudio_iphoneos.a").exists():
+    if not all((fmod / path).exists() for path in (
+            "fmod/libs/iOS/libfmodstudio_iphoneos.a",
+            "fmod/libs/macos/libGodotFmod.macos.template_release.framework",
+            "fmod/libs/macos/libfmod.dylib",
+            "fmod/libs/macos/libfmodstudio.dylib")):
         archive = download("fmod-addons.zip",
             "https://github.com/utopia-rise/fmod-gdextension/releases/download/6.1.0-4.5.0/addons.zip",
             "8796f6cd1cb38bf7ff4da2648f8af2695244ffdb80a7ac4ab8a171ca44895713")
         with zipfile.ZipFile(archive) as zipped:
             for name in zipped.namelist():
-                if name.startswith("fmod/libs/iOS/"):
+                if name.startswith(("fmod/libs/iOS/", "fmod/libs/macos/")):
                     zipped.extract(name, fmod)
 
     spine = ROOT / "vendor/spine-runtimes"
@@ -100,7 +104,18 @@ def main():
         shutil.copytree(spine / "spine-cpp/spine-cpp", spine / "spine-godot/spine_godot/spine-cpp", dirs_exist_ok=True)
         run(tools / "python/bin/scons", "platform=ios", "arch=arm64", "target=template_release",
             "ios_min_version=14.0", "-j8", cwd=spine / "spine-godot")
-    print("Public tools ready. Continue with build.py prepare using your installed Steam copy.")
+    # A game-free export also needs the public macOS editor-time Spine wrapper.
+    # It is never copied into the signed iOS app.
+    macos_spine = spine / "spine-godot/bin/macos/libspine_godot.macos.template_release.framework"
+    if not macos_spine.exists():
+        python = tools / "python/bin/python"
+        if not python.exists():
+            run(sys.executable, "-m", "venv", tools / "python")
+        run(python, "-m", "pip", "install", "scons==4.11.1")
+        shutil.copytree(spine / "spine-cpp/spine-cpp", spine / "spine-godot/spine_godot/spine-cpp", dirs_exist_ok=True)
+        run(tools / "python/bin/scons", "platform=macos", "arch=arm64", "target=template_release",
+            "-j8", cwd=spine / "spine-godot")
+    print("Public tools ready. Continue with build.py prepare for a legacy build, or build-shell for a game-free host.")
 
 
 if __name__ == "__main__":
