@@ -248,6 +248,23 @@ def build_shell_unsigned(cfg, host):
             raise SystemExit("Expected one public GodotSharp 4.5.1 NuGet assembly; restore the game-free hooks first")
         shutil.copy2(candidates[0], managed / "GodotSharp.dll")
 
+    # MSBuild's -o output for a class library may omit transitive NuGet
+    # assemblies. Stage the exact, already-restored public package versions
+    # explicitly, rather than relying on project-reference copy-local rules.
+    # These are runtime dependencies of the Steam downloader and the on-device
+    # Harmony/corelib adapter, not proprietary game files.
+    for package, version, filename in (
+        ("steamkit2", "3.4.0", "SteamKit2.dll"),
+        ("mono.cecil", "0.11.6", "Mono.Cecil.dll"),
+    ):
+        base = Path.home() / ".nuget/packages" / package / version / "lib"
+        candidates = sorted(base.glob("net*/" + filename))
+        if not candidates:
+            raise SystemExit(f"Missing restored NuGet runtime dependency {package} {version}: {filename}")
+        # Prefer the net9-compatible asset with the highest target framework.
+        source = candidates[-1]
+        shutil.copy2(source, managed / filename)
+
     # The public compile-time 'sts2' stub is never installed. The authentic
     # assembly is downloaded with SteamKit2 after account ownership checks.
     (managed / "sts2.dll").unlink(missing_ok=True)
