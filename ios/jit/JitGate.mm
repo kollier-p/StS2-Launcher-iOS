@@ -1,5 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <CoreImage/CoreImage.h>
+#include <dlfcn.h>
 #include <unistd.h>
 
 extern "C" int csops(pid_t, unsigned int, void *, size_t);
@@ -13,10 +15,15 @@ static BOOL engineStarted;
 @property(nonatomic, copy) NSDictionary *launchOptions;
 @property(nonatomic, strong) UIWindow *window;
 @property(nonatomic, strong) UILabel *notice;
+@property(nonatomic, strong) UIImageView *qr;
+@property(nonatomic, strong) UIButton *retry;
+@property(nonatomic, assign) BOOL bootstrapStarted;
+@property(nonatomic, assign) BOOL justInstalled;
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, copy) NSString *documents;
 - (void)start;
 - (void)checkReadiness;
+- (void)beginBootstrap;
 @end
 
 static STS2JitGate *startupGate;
