@@ -13,6 +13,7 @@ internal sealed class SteamCloudPanel
     private readonly ItemList _files;
     private readonly Label _preview;
     private readonly Button _connect, _refresh, _download, _disconnect;
+    private readonly Button _downloadGame, _cancelOperation;
     private readonly Button _prepareImport, _confirmImport;
     private readonly CheckButton _includeRun;
     private readonly Button _vanillaTab, _moddedTab;
@@ -53,7 +54,7 @@ internal sealed class SteamCloudPanel
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 12);
         margin.AddChild(column);
-        var title = new Label { Text = "Steam Cloud" };
+        var title = new Label { Text = "Steam / game files and cloud saves" };
         title.AddThemeFontSizeOverride("font_size", 30);
         column.AddChild(title);
         _status = new Label { Text = "Connect to browse your Slay the Spire 2 saves.", AutowrapMode = TextServer.AutowrapMode.WordSmart };
@@ -64,6 +65,8 @@ internal sealed class SteamCloudPanel
         _connect = Button(actions, "Connect Steam", () => Run(Connect));
         _refresh = Button(actions, "Refresh saves", () => Run(Refresh));
         _disconnect = Button(actions, "Disconnect", Disconnect);
+        _downloadGame = Button(actions, "Download game files", () => Run(DownloadGame));
+        _cancelOperation = Button(actions, "Cancel operation", () => _operation?.Cancel());
         Button(actions, "Close", Close);
         _qr = new TextureRect { Visible = false, CustomMinimumSize = new Vector2(280, 280),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
@@ -281,7 +284,7 @@ internal sealed class SteamCloudPanel
         catch (HttpRequestException) { _status.Text = "Cannot reach Steam. Check your connection and try again."; }
         catch (Exception error)
         {
-            _status.Text = error is InvalidOperationException or InvalidDataException ? error.Message
+            _status.Text = error is InvalidOperationException or InvalidDataException or UnauthorizedAccessException ? error.Message
                 : "Could not complete this operation. No active saves were changed.";
         }
         finally
@@ -326,6 +329,30 @@ internal sealed class SteamCloudPanel
         _catalog = _inventory.Select(CloudBrowser.Describe).ToList();
         RebuildBrowser();
         _status.Text = $"Connected as {_client.Login.AccountName}. {_inventory.Count} cloud files.";
+    }
+
+    // This first milestone stages checked original game assets rather than replacing the
+    // PCK that the currently running Godot instance has mapped. Installation/preparation
+    // during first launch is separate work; neither active saves nor mods are touched.
+    private async Task DownloadGame(CancellationToken cancellation)
+    {
+        var login = _client.Login ?? throw new InvalidOperationException("Connect Steam before downloading game files.");
+        _status.Text = "Verifying game ownership with Steam...";
+        var reporter = new Progress<Downloads.SteamGameDownloader.Progress>(item =>
+        {
+            Callable.From(() =>
+            {
+                if (cancellation.IsCancellationRequested) return;
+                _status.Text = item.Total > 0
+                    ? item.Phase + $" {item.Done * 100.0 / item.Total:0.0}% ({item.Done / (1024 * 1024):N0} / {item.Total / (1024 * 1024):N0} MiB)"
+                    : item.Phase + "...";
+            }).CallDeferred();
+        });
+        var receipt = await Downloads.SteamGameDownloader.DownloadAsync(login,
+            Path.Combine(OS.GetUserDataDir(), "steam-game-downloads"), reporter, cancellation);
+        _status.Text = $"Steam game files verified ({receipt.Bytes / (1024 * 1024):N0} MiB). " +
+            $"Saved under Files > StS2 JIT > steam-game-downloads > {receipt.Manifest}. " +
+            "This is a staged copy; the active game and saves have not been replaced.";
     }
 
     private async Task Download(CancellationToken cancellation)
@@ -431,6 +458,9 @@ internal sealed class SteamCloudPanel
         _connect.Disabled = _busy || connected;
         _refresh.Disabled = _busy || !connected;
         _disconnect.Disabled = _busy || !connected;
+        _downloadGame.Disabled = _busy || !connected;
+        _cancelOperation.Visible = _busy;
+        _cancelOperation.Disabled = !_busy;
         _download.Visible = selected != null;
         _download.Disabled = _busy || !connected || selected == null;
         _importActions.Visible = _category == CloudFileKind.Saves && selected != null;
