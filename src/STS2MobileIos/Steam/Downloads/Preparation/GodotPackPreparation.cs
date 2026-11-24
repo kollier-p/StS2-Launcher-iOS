@@ -203,9 +203,21 @@ public static class GodotPackPreparation
             ?? throw new InvalidDataException("Game pack has no expected Sentry extension.");
 
         byte[] original = ReadResource(stream, index, extension);
-        var filtered = original.Split((byte)'\n').Where(line => line.Length > 0 &&
-            !Encoding.UTF8.GetString(line).Contains("sentry", StringComparison.OrdinalIgnoreCase));
-        byte[] replacement = filtered.SelectMany(line => line.Append((byte)'\n')).ToArray();
+        using var filtered = new MemoryStream();
+        int start = 0;
+        for (int i = 0; i <= original.Length; i++)
+        {
+            if (i < original.Length && original[i] != (byte)'\n') continue;
+            int length = i - start;
+            if (length > 0 &&
+                !Encoding.UTF8.GetString(original, start, length).Contains("sentry", StringComparison.OrdinalIgnoreCase))
+            {
+                filtered.Write(original, start, length);
+                filtered.WriteByte((byte)'\n');
+            }
+            start = i + 1;
+        }
+        byte[] replacement = filtered.ToArray();
         if (replacement.Length > original.Length)
             throw new InvalidDataException("Reporting removal would grow the extension listing.");
         string listing = Encoding.UTF8.GetString(replacement);
