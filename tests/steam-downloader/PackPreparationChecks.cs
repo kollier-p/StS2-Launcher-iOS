@@ -115,8 +115,8 @@ internal static class PackPreparationChecks
             "Reporting extension remains in extension list");
         Assert(Encoding.UTF8.GetString(files["project.binary"]).Contains("xutoload/SentryInit"),
             "Reporting autoload was not disabled");
-        Assert(files["scenes/first.cs"].SequenceEqual(new byte[] { 10 }), "Script placeholder missing");
-        Assert(files["scenes/second.cs"].SequenceEqual(new byte[] { 10 }), "Second script missing");
+        Assert(files["res://scenes/first.cs"].SequenceEqual(new byte[] { 10 }), "Script placeholder missing");
+        Assert(files["res://scenes/second.cs"].SequenceEqual(new byte[] { 10 }), "Second script missing");
 
         // A cancelled conversion cannot overwrite a valid prepared pack.
         byte[] previous = File.ReadAllBytes(output);
