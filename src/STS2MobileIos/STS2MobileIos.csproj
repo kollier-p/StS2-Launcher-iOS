@@ -20,4 +20,9 @@
     </Reference>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Steam's protocol, depot manifest and CDN client; copied alongside the JIT hook assembly. -->
+    <PackageReference Include="SteamKit2" Version="3.4.0" />
+  </ItemGroup>
+
 </Project>
