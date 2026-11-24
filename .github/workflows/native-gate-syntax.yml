@@ -1,0 +1,71 @@
+name: Check native iOS JIT gate syntax
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["feature/steamkit2-integration"]
+    paths:
+      - "ios/jit/JitGate.mm"
+      - "ios/jit/SteamSetupGate.mm"
+      - "ios/jit/SceneLifecycle.mm"
+      - "ios/Sts2Native.mm"
+      - ".github/workflows/native-gate-syntax.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: xcode-27
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check UIKit scene + SteamKit2 first-launch Objective-C++ compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+          # Same relative include ordering as prepare_xcode.py's generated dummy.cpp.
+          cat > native-check.mm <<'EOF'
+          #include "ios/Sts2Native.mm"
+          #include "ios/jit/JitGate.mm"
+          #include "ios/jit/SteamSetupGate.mm"
+          #include "ios/jit/SceneLifecycle.mm"
+          EOF
+          xcrun clang++ -x objective-c++ -std=c++17 -fobjc-arc -fblocks \
+            -arch arm64 -miphoneos-version-min=16.0 -isysroot "$sdk" \
+            -fsyntax-only native-check.mm
+          rm native-check.mm
+      - name: Check patched Mono JIT host Objective-C++ against pinned runtime headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+          package="microsoft.netcore.app.runtime.mono.ios-arm64.9.0.20.nupkg"
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.mono.ios-arm64/9.0.20/$package" \
+            --output "$package"
+          echo "ccb189791773d4ca77cee3dd03e28dc2a9b6231b479e1e44e28088a378692b3f  $package" | shasum -a 256 -c
+          mkdir -p mono-headers
+          python3 - "$package" <<'PY'
+          from pathlib import Path
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              for entry in archive.infolist():
+                  if not entry.filename.startswith("runtimes/ios-arm64/native/include/mono-2.0/"):
+                      continue
+                  target = Path("mono-headers") / entry.filename
+                  if entry.is_dir():
+                      target.mkdir(parents=True, exist_ok=True)
+                  else:
+                      target.parent.mkdir(parents=True, exist_ok=True)
+                      target.write_bytes(archive.read(entry))
+          PY
+          xcrun clang++ -x objective-c++ -std=c++17 -fobjc-arc -fblocks \
+            -arch arm64 -miphoneos-version-min=16.0 -isysroot "$sdk" \
+            -Imono-headers/runtimes/ios-arm64/native/include/mono-2.0 \
+            -fsyntax-only ios/jit/RuntimeHost.mm ios/jit/MonoJitMemory.mm

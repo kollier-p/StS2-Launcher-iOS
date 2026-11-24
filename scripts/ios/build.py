@@ -145,6 +145,7 @@ def main():
         stage = stages.add_parser(name)
         stage.add_argument("--game", type=Path, help="Steam macOS ARM64 .app; overrides config.game")
     stages.add_parser("runtime")
+    stages.add_parser("build-shell", help="Build a game-free unsigned JIT/SteamKit2 iOS host")
     installer = stages.add_parser("install")
     installer.add_argument("--content", action="store_true", help="Transfer the prepared game pack (about 2 GB)")
     installer.add_argument("--mods", type=Path, help="Copy this directory of mod folders to Documents/mods")
@@ -156,6 +157,13 @@ def main():
         jit.runtime()
         return
     cfg = config(require_device=args.stage in {"install", "launch"})
+    if args.stage == "build-shell":
+        from prepare_public_extensions import prepare as prepare_public_extensions
+
+        prepare_public_extensions()
+        export_host(cfg)
+        jit.build_shell_unsigned(cfg, HOST)
+        return
     if args.stage in {"prepare", "content", "build"}:
         game = (args.game or Path(cfg.get("game", str(DEFAULT_GAME)))).expanduser().resolve()
         if args.stage == "prepare":

@@ -60,12 +60,25 @@ def prepare(build, config, content_size):
     info["LSSupportsOpeningDocumentsInPlace"] = True
     info["NSLocalNetworkUsageDescription"] = "Find and join Slay the Spire 2 games on your Wi-Fi network."
     info["NSBonjourServices"] = ["_sts2lan._udp"]
+    # Godot 4.5.1 predates iOS 27's mandatory UIScene lifecycle. Attach
+    # first-launch UIKit and the later Godot rendering window to one scene.
+    info["UIApplicationSceneManifest"] = {
+        "UIApplicationSupportsMultipleScenes": False,
+        "UISceneConfigurations": {
+            "UIWindowSceneSessionRoleApplication": [{
+                "UISceneConfigurationName": "Default Configuration",
+                "UISceneDelegateClassName": "STS2SceneDelegate",
+            }],
+        },
+    }
     orientations = ["UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"]
     info["UISupportedInterfaceOrientations"] = orientations
     info["UISupportedInterfaceOrientations~ipad"] = orientations
     info_path.write_bytes(plistlib.dumps(info))
 
     shutil.copy2(ROOT / "ios/jit/JitGate.mm", build / "StS2/JitGate.mm")
+    shutil.copy2(ROOT / "ios/jit/SteamSetupGate.mm", build / "StS2/SteamSetupGate.mm")
+    shutil.copy2(ROOT / "ios/jit/SceneLifecycle.mm", build / "StS2/SceneLifecycle.mm")
     dummy = build / "StS2/dummy.cpp"
     content = dummy.read_text()
     if "load_all_fmod_plugins" not in content:
@@ -81,5 +94,9 @@ unsigned int *load_all_fmod_plugins(void *, unsigned int *count) {
         content += '\n#include "Sts2Native.mm"\n'
     if '#include "JitGate.mm"' not in content:
         content += '\n#include "JitGate.mm"\n'
+    if '#include "SteamSetupGate.mm"' not in content:
+        content += '\n#include "SteamSetupGate.mm"\n'
+    if '#include "SceneLifecycle.mm"' not in content:
+        content += '\n#include "SceneLifecycle.mm"\n'
     dummy.write_text(content)
     print("Prepared Mono JIT framework, startup gate and native extensions")

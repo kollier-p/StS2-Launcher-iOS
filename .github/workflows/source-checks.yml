@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: source-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -22,12 +26,24 @@ jobs:
         run: python3 scripts/check_repository.py
       - name: Test JIT build tooling, backups, content and reports
         run: python3 -m unittest discover -s scripts/ios -p 'test_*.py'
+      - name: Protect JIT mod-patching backend during launcher migration
+        run: python3 -m unittest discover -s tests/ios -p 'test_jit_*.py'
+      - name: Test unsigned IPA archive packaging
+        run: python3 -m unittest discover -s scripts/ios -p 'test_package_ipa.py'
       - name: Test frame accounting
         run: dotnet run --project tests/ios/FrameWindowTests.csproj -c Release
       - name: Test cloud integrity and save isolation
         run: dotnet run --project tests/cloud/CloudTests.csproj -c Release
       - name: Check LAN addresses offline
         run: dotnet run --project tests/features/FeatureTests.csproj -c Release
+      - name: Build SteamKit2 game downloader without game assets
+        run: dotnet build src/STS2SteamDownloads/STS2SteamDownloads.csproj -c Release
+      - name: Build independent first-launch SteamKit2 bootstrap
+        run: dotnet build src/STS2SteamBootstrap/STS2SteamBootstrap.csproj -c Release
+      - name: Test SteamKit2 downloader without contacting Steam
+        run: dotnet run --project tests/steam-downloader/SteamDownloaderTests.csproj -c Release
+      - name: Build JIT game hooks against nonshipping game API stubs
+        run: dotnet build src/STS2Jit/STS2Jit.csproj -c Release -p:UseGameStub=true
       - name: Build JIT dependency adapters
         run: dotnet build src/STS2JitPrepare -c Release
       - name: Build JIT support library

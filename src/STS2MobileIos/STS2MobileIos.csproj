@@ -9,7 +9,7 @@
     <GameReferences Condition="'$(GameReferences)' == ''">$(MSBuildThisFileDirectory)../../upstream/game-refs</GameReferences>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(UseGameStub)' != 'true'">
     <Reference Include="sts2">
       <HintPath>$(GameReferences)/sts2.dll</HintPath>
       <Private>false</Private>
@@ -19,5 +19,28 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+  <ItemGroup Condition="'$(UseGameStub)' == 'true'">
+    <!-- Compile-only legal API declarations; real sts2.dll comes from Steam on device. -->
+    <ProjectReference Include="../STS2GameStub/STS2GameStub.csproj" PrivateAssets="all">
+      <Private>false</Private>
+    </ProjectReference>
+    <PackageReference Include="GodotSharp" Version="4.5.1" />
+  </ItemGroup>
 
+  <ItemGroup>
+    <!-- Game download protocol lives in its own buildable, game-independent project. -->
+    <Compile Remove="Steam/Downloads/**/*.cs" />
+    <ProjectReference Include="../STS2SteamDownloads/STS2SteamDownloads.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseGameStub)' == 'true'">
+    <!-- Do not compile game-specific UI, Cloud import or LAN types without the
+         real game; use a safe minimal JIT patch set instead. -->
+    <Compile Remove="**/*.cs" />
+    <Compile Include="Lite/**/*.cs" />
+    <Compile Include="NativeBridge.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseGameStub)' != 'true'">
+    <Compile Remove="Lite/**/*.cs" />
+  </ItemGroup>
 </Project>

@@ -1,0 +1,101 @@
+// Gives the SteamKit2 JIT gate or the game's window a UIKit scene, required by iOS 27.
+//
+// An app built with the iOS 27 SDK must use the scene-based life cycle, or iOS stops it during launch
+// (`_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`, seen on iOS 27.0.1). Godot 4.5.1
+// predates that: its app delegate service creates the window itself in
+// application:didFinishLaunchingWithOptions: and reads it back through the delegate's window
+// property. The Info.plist names this class as the scene delegate (tools/prepare_full_game_xcode.py).
+// When iOS connects the scene, the window the engine already made is moved onto it, so the engine
+// keeps the window it knows.
+//
+// Under the scene life cycle iOS no longer calls the app delegate's activation and background
+// methods, and the engine's focus, pause and audio handling hangs off them. The scene callbacks
+// below forward to those methods on the app delegate, which hands them to every engine service.
+#import <UIKit/UIKit.h>
+
+// Godot's iOS display server sizes its viewport with UIScreen.mainScreen.scale,
+// while touch events use the rendering view's contentScaleFactor. The view and
+// its layer initially cache that scale, so refresh both after a scene change.
+@protocol STS2RenderingView
+@property(nonatomic, readonly) CALayer *renderingLayer;
+@end
+
+static void STS2SyncRenderScale(UIWindow *window) {
+	UIView *view = window.rootViewController.viewIfLoaded;
+	if (![view respondsToSelector:@selector(renderingLayer)]) {
+		return;
+	}
+	CALayer *layer = [(id<STS2RenderingView>)view renderingLayer];
+	CGFloat scale = UIScreen.mainScreen.scale;
+	if (view.contentScaleFactor != scale || (layer && layer.contentsScale != scale)) {
+		view.contentScaleFactor = scale;
+		layer.contentsScale = scale;
+		[view setNeedsLayout];
+	}
+}
+
+// Calls an optional UIApplicationDelegate method that takes the application, if the delegate has it.
+static void STS2ForwardToAppDelegate(SEL selector) {
+	UIApplication *application = UIApplication.sharedApplication;
+	id<UIApplicationDelegate> delegate = application.delegate;
+	if ([delegate respondsToSelector:selector]) {
+		((void (*)(id, SEL, UIApplication *))[(id)delegate methodForSelector:selector])(delegate, selector, application);
+	}
+}
+
+@interface STS2SceneDelegate : UIResponder <UIWindowSceneDelegate>
+@property(strong, nonatomic) UIWindow *window;
+@end
+
+@implementation STS2SceneDelegate
+
+- (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)connectionOptions {
+	if (![scene isKindOfClass:UIWindowScene.class]) {
+		return;
+	}
+	UIWindowScene *windowScene = (UIWindowScene *)scene;
+	id<UIApplicationDelegate> delegate = UIApplication.sharedApplication.delegate;
+	UIWindow *window = startupGate ? startupGate.window :
+		([delegate respondsToSelector:@selector(window)] ? delegate.window : nil);
+	if (!window) {
+		// The JIT gate and engine both create their windows before a scene connects.
+		return;
+	}
+	window.windowScene = windowScene;
+	window.frame = windowScene.coordinateSpace.bounds;
+	[window makeKeyAndVisible];
+	self.window = window;
+	STS2SyncRenderScale(window);
+}
+
+- (void)windowScene:(UIWindowScene *)windowScene didUpdateEffectiveGeometry:(UIWindowSceneGeometry *)previousGeometry API_AVAILABLE(ios(26.0)) {
+	UIWindow *window = self.window;
+	if (!window || window.windowScene != windowScene) {
+		return;
+	}
+	CGRect bounds = windowScene.effectiveGeometry.coordinateSpace.bounds;
+	if (!CGRectIsEmpty(bounds) && !CGRectEqualToRect(window.frame, bounds)) {
+		// Godot resizes its rendering layer and viewport when its view lays out at the new size.
+		window.frame = bounds;
+	}
+	STS2SyncRenderScale(window);
+}
+
+- (void)sceneDidBecomeActive:(UIScene *)scene {
+	STS2SyncRenderScale(self.window);
+	STS2ForwardToAppDelegate(@selector(applicationDidBecomeActive:));
+}
+
+- (void)sceneWillResignActive:(UIScene *)scene {
+	STS2ForwardToAppDelegate(@selector(applicationWillResignActive:));
+}
+
+- (void)sceneDidEnterBackground:(UIScene *)scene {
+	STS2ForwardToAppDelegate(@selector(applicationDidEnterBackground:));
+}
+
+- (void)sceneWillEnterForeground:(UIScene *)scene {
+	STS2ForwardToAppDelegate(@selector(applicationWillEnterForeground:));
+}
+
+@end

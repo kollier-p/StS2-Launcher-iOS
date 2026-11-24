@@ -61,8 +61,20 @@ tree. The project's MIT license does not replace any dependency's own terms.
 ## Steam protocol references
 - **Reference**: https://github.com/SteamDatabase/Protobufs
 - **Use**: Field numbers for authentication, client login, and Cloud messages.
-  The launcher implements a limited wire reader/writer; it does not bundle
-  SteamKit2, generated Steam message classes, or the Steam client.
+  The existing Steam Cloud browser implements a limited wire reader/writer
+  without generated Steam message classes. The separate game-file downloader now
+  uses SteamKit2 (see below).
+
+## SteamKit2 and reference game depot downloader
+- **SteamKit2**: version 3.4.0, MIT, https://github.com/SteamRE/SteamKit.
+  Restored as a NuGet dependency at build time, not committed as a binary.
+- **Reference source**: MIT-licensed depot/network code adapted from
+  https://github.com/kollier-p/sts2-ios-launcher-public/tree/feature/steam-workshop-browser,
+  originally carrying the Eky 2026 MIT notice. Its original MIT permission
+  and copyright notice are retained in the root [LICENSE](LICENSE).
+- **Scope**: `src/STS2MobileIos/Steam/Downloads/` and
+  `src/STS2SteamDownloads/`. This is new download functionality, separate
+  from the existing custom Steam Cloud client.
 
 ## FMOD
 - **License**: Proprietary (FMOD EULA)

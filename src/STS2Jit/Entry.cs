@@ -57,8 +57,14 @@ public static class Entry
     }
 
     private static string ModRoot => Path.Combine(OS.GetUserDataDir(), "mods");
+#if STS2_PUBLIC_BOOTSTRAP
+    // Game logging callbacks vary between Steam branches. They are optional
+    // for play; do not bind a compile-only stub event to the real game ABI.
+    public static void EnableLogging() { }
+#else
     public static void EnableLogging() => MegaCrit.Sts2.Core.Logging.Log.LogCallback +=
         (level, message, _) => Log($"[Game/{level}] {message}");
+#endif
     private static string DesktopModRoot => Path.Combine(Path.GetDirectoryName(OS.GetExecutablePath())!, "mods");
 
     public static void InitializeMods(ref IModManagerFileIo fileIo, ref ModSettings settings)

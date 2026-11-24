@@ -1,0 +1,102 @@
+# Public game-free IPA. No Steam installation, signing identity, Apple team, or
+# credentials in CI: Steam sign-in happens on the device, Apple-ID signing at sideload.
+name: Build unsigned SteamKit2 JIT IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["feature/steamkit2-integration"]
+    paths:
+      - ".github/workflows/build-ipa.yml"
+      - "src/**"
+      - "ios/**"
+      - "scripts/ios/**"
+      - "global.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unsigned-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unsigned-ipa:
+    runs-on: xcode-27
+    timeout-minutes: 360
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+      BUNDLE_ID: io.github.${{ github.repository_owner }}.sts2jit
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify Apple Silicon host and configure unsigned bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          bundle = re.sub(r"[^a-z0-9.-]", "", os.environ["BUNDLE_ID"].lower())
+          if not bundle.startswith("io.github.") or not bundle.endswith(".sts2jit"):
+              raise SystemExit("Unsafe generated bundle identifier")
+          Path("ios/config.local.json").write_text(json.dumps({
+              "team_id": "0000000000", "bundle_id": bundle, "profile": False
+          }))
+          PY
+      - name: Free disk space on ephemeral hosted Mac
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h .
+          # The reference build also frees extra Xcode installations: this
+          # workflow compiles a patched .NET runtime and needs its disk space.
+          # Keep the selected Xcode_27.2.app untouched.
+          for unused in /Applications/Xcode_27.app /Applications/Xcode_27.2_Release_Candidate.app; do
+            if [[ -d "$unused" && "$unused/Contents/Developer" != "$DEVELOPER_DIR" ]]; then
+              sudo rm -rf "$unused"
+            fi
+          done
+          if [[ -n "${ANDROID_HOME:-}" && -d "$ANDROID_HOME" ]]; then
+            rm -rf "$ANDROID_HOME"
+          fi
+          df -h .
+      - name: Bootstrap pinned public Godot, .NET and native dependencies
+        run: python3 scripts/ios/bootstrap.py
+      - name: Remove downloaded archives after verified installation
+        shell: bash
+        run: |
+          rm -f .cache/downloads/dotnet9.tar.gz .cache/downloads/godot-mono.zip \
+            .cache/downloads/godot-templates.tpz .cache/downloads/fmod-addons.zip
+          df -h .
+      - name: Compile patched Mono JIT with writable code aliases
+        run: python3 scripts/ios/build.py runtime
+      - name: Export game-free Godot shell and compile unsigned iOS launcher
+        run: python3 scripts/ios/build.py build-shell
+      - name: Verify no game binaries were bundled
+        run: python3 scripts/ios/scan_unsigned_ipa.py --app .cache/xcode-jit/Build/Products/Release-iphoneos/StS2.app
+      - name: Package unsigned IPA and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ios/package_ipa.py \
+            --app .cache/xcode-jit/Build/Products/Release-iphoneos/StS2.app \
+            --output dist/StS2-JIT-unsigned.ipa \
+            --bundle-id "$(python3 -c 'import json;print(json.load(open("ios/config.local.json"))["bundle_id"])')" \
+            --unsigned
+          python3 scripts/ios/scan_unsigned_ipa.py --ipa dist/StS2-JIT-unsigned.ipa
+          (cd dist && shasum -a 256 -c StS2-JIT-unsigned.ipa.sha256)
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: StS2-SteamKit2-MonoJIT-unsigned-IPA
+          path: |
+            dist/StS2-JIT-unsigned.ipa
+            dist/StS2-JIT-unsigned.ipa.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

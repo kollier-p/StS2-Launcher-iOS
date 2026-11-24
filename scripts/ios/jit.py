@@ -179,7 +179,9 @@ def build_game(cfg, steam, host):
     for directory in (PACK / "lib/net9.0", ROOT / "upstream/game-refs"):
         for assembly in directory.glob("*.dll"):
             shutil.copy2(assembly, managed / assembly.name)
-    for name in ("STS2JitSupport", "STS2Jit"):
+    for name in ("STS2JitSupport", "STS2Jit", "STS2SteamBootstrap"):
+        # The standalone SteamKit2 bootstrap and its transitive dependencies
+        # must be available before any game files have been downloaded.
         run(DOTNET, "build", ROOT / "src" / name, "-c", "Release", "-o", managed)
     prepare_adapters(managed)
     for library in (PACK / "native").glob("libSystem.*.dylib"):
@@ -189,6 +191,109 @@ def build_game(cfg, steam, host):
     entitlements = DERIVED / "Build/Intermediates.noindex/StS2.build/Release-iphoneos/StS2.build/StS2.app.xcent"
     run("codesign", "--force", "--sign", identity, "--entitlements", entitlements, app)
 
+
+
+def build_shell_unsigned(cfg, host):
+    """Build an unsigned, game-free iOS shell that downloads the user's Steam game.
+
+    The Mono JIT runtime remains exactly the patched alias-memory backend used
+    by signed builds. Compile-only API stubs are never distributed.
+    """
+    from prepare_xcode import prepare
+
+    libraries = native_libraries()
+    framework = host / "StS2/dylibs/sts2.framework"
+    framework.mkdir(parents=True, exist_ok=True)
+    sdk = subprocess.check_output(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], text=True).strip()
+    run("xcrun", "clang++", "-dynamiclib", "-arch", "arm64", "-isysroot", sdk,
+        "-miphoneos-version-min=16.0", "-std=c++17", "-fobjc-arc", "-O2",
+        "-I" + str(PACK / "native/include/mono-2.0"),
+        ROOT / "ios/jit/RuntimeHost.mm", ROOT / "ios/jit/MonoJitMemory.mm",
+        *["-Wl,-force_load," + str(library) for library in libraries],
+        "-framework", "Foundation", "-framework", "Security", "-lz", "-liconv",
+        "-Wl,-install_name,@rpath/sts2.framework/sts2", "-o", framework / "sts2")
+    prepare(host, cfg, 0)  # No embedded or pre-prepared game content.
+    run("xcodebuild", "-project", host / "StS2.xcodeproj", "-scheme", "StS2",
+        "-configuration", "Release", "-destination", "generic/platform=iOS",
+        "-derivedDataPath", DERIVED, "CODE_SIGNING_ALLOWED=NO",
+        "CODE_SIGNING_REQUIRED=NO", "STRIP_STYLE=non-global",
+        "DEVELOPMENT_TEAM=", "build")
+    app = APP
+    if not (app / "Info.plist").is_file():
+        raise SystemExit("Unsigned Xcode build did not create StS2.app")
+
+    managed = app / "Managed"
+    if managed.exists():
+        shutil.rmtree(managed)
+    managed.mkdir()
+    runtime = PACK / "lib/net9.0"
+    if not runtime.is_dir():
+        raise SystemExit("Pinned iOS Mono framework assembly pack is missing")
+    for assembly in runtime.glob("*.dll"):
+        shutil.copy2(assembly, managed / assembly.name)
+    for name in ("STS2JitSupport", "STS2Jit", "STS2SteamBootstrap"):
+        command = [DOTNET, "build", ROOT / "src" / name, "-c", "Release", "-o", managed]
+        if name == "STS2Jit":
+            command.append("-p:UseGameStub=true")
+        run(*command)
+
+    # The Godot API is a public NuGet dependency, not a game asset. In some
+    # MSBuild configurations ProjectReference Private=false means this DLL is
+    # resolved for compilation but omitted from the -o output; copy the
+    # matching restored package explicitly if necessary.
+    if not (managed / "GodotSharp.dll").is_file():
+        godot_packages = Path.home() / ".nuget/packages/godotsharp/4.5.1/lib"
+        candidates = sorted(godot_packages.glob("net*/GodotSharp.dll"))
+        if len(candidates) != 1:
+            raise SystemExit("Expected one public GodotSharp 4.5.1 NuGet assembly; restore the game-free hooks first")
+        shutil.copy2(candidates[0], managed / "GodotSharp.dll")
+
+    # MSBuild's -o output for a class library may omit transitive NuGet
+    # assemblies. Stage the exact, already-restored public package versions
+    # explicitly, rather than relying on project-reference copy-local rules.
+    # These are runtime dependencies of the Steam downloader and the on-device
+    # Harmony/corelib adapter, not proprietary game files.
+    for package, version, filename in (
+        ("steamkit2", "3.4.0", "SteamKit2.dll"),
+        ("mono.cecil", "0.11.6", "Mono.Cecil.dll"),
+    ):
+        base = Path.home() / ".nuget/packages" / package / version / "lib"
+        candidates = sorted(base.glob("net*/" + filename))
+        if not candidates:
+            raise SystemExit(f"Missing restored NuGet runtime dependency {package} {version}: {filename}")
+        # Prefer the net9-compatible asset with the highest target framework.
+        source = candidates[-1]
+        shutil.copy2(source, managed / filename)
+
+    # The public compile-time 'sts2' stub is never installed. The authentic
+    # assembly is downloaded with SteamKit2 after account ownership checks.
+    (managed / "sts2.dll").unlink(missing_ok=True)
+    # The original app's adapter knows how to make CoreLib report executable
+    # dynamic-code support to Harmony on the patched Mono backend. Unlike the
+    # Mac game build, there is no Harmony to adapt yet; Steam supplies it later.
+    run(DOTNET, "build", ROOT / "src/STS2JitPrepare", "-c", "Release")
+    prepare_adapter = ROOT / "src/STS2JitPrepare/bin/Release/net9.0/STS2JitPrepare.dll"
+    run(DOTNET, prepare_adapter, "corelib", PACK / "native/System.Private.CoreLib.dll",
+        managed / "STS2JitSupport.dll", managed / "System.Private.CoreLib.dll")
+
+    for library in (PACK / "native").glob("libSystem.*.dylib"):
+        destination = app / "Frameworks" / library.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(library, destination)
+
+    required = ("STS2Jit.dll", "STS2JitSupport.dll", "STS2SteamBootstrap.dll",
+                "STS2SteamDownloads.dll", "SteamKit2.dll", "Mono.Cecil.dll",
+                "System.Private.CoreLib.dll", "GodotSharp.dll")
+    missing = [name for name in required if not (managed / name).is_file()]
+    if missing:
+        raise SystemExit("Unsigned host is missing managed runtime dependencies: " + ", ".join(missing))
+    # Godot exports its own small StS2.pck containing the public bootstrap
+    # scene. That host PCK is required and is NOT Steam's multi-gigabyte game
+    # PCK. Apply the same fail-closed artifact scanner used in the CI publish
+    # step: allow only the small root host pack, never the game DLL/depot/PCK.
+    from scan_unsigned_ipa import inspect_app
+    inspect_app(app)
+    print(f"Game-free unsigned iOS host built at {app}; live Mono JIT and SteamKit2 retained.")
 
 def install_game(cfg, push_content=False, mods=None):
     if push_content and not (CACHE / "StS2.pck").is_file():

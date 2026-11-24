@@ -78,29 +78,61 @@ def main():
             with (templates / "ios.zip").open("wb") as dst:
                 shutil.copyfileobj(src, dst)
     fmod = ROOT / "vendor/fmod-release"
-    if not (fmod / "fmod/libs/iOS/libfmodstudio_iphoneos.a").exists():
+    if not all((fmod / path).exists() for path in (
+            "fmod/libs/iOS/libfmodstudio_iphoneos.a",
+            "fmod/libs/macos/libGodotFmod.macos.template_release.framework",
+            "fmod/libs/macos/libfmod.dylib",
+            "fmod/libs/macos/libfmodstudio.dylib")):
         archive = download("fmod-addons.zip",
             "https://github.com/utopia-rise/fmod-gdextension/releases/download/6.1.0-4.5.0/addons.zip",
             "8796f6cd1cb38bf7ff4da2648f8af2695244ffdb80a7ac4ab8a171ca44895713")
         with zipfile.ZipFile(archive) as zipped:
             for name in zipped.namelist():
-                if name.startswith("fmod/libs/iOS/"):
+                if name.startswith(("fmod/libs/iOS/", "fmod/libs/macos/")):
                     zipped.extract(name, fmod)
 
-    spine = ROOT / "vendor/spine-runtimes"
-    checkout(spine, "https://github.com/EsotericSoftware/spine-runtimes.git",
-             "e7dc1435fa4a0083ab431f1b28e083c14a1f5c68", ("spine-cpp", "spine-godot"))
-    checkout(spine / "spine-godot/godot-cpp", "https://github.com/godotengine/godot-cpp.git",
-             "e83fd0904c13356ed1d4c3d09f8bb9132bdc6b77")
-    if not (spine / "spine-godot/bin/ios/libspine_godot.ios.template_release.framework").exists():
-        python = tools / "python/bin/python"
-        if not python.exists():
-            run(sys.executable, "-m", "venv", tools / "python")
-        run(python, "-m", "pip", "install", "scons==4.11.1")
-        shutil.copytree(spine / "spine-cpp/spine-cpp", spine / "spine-godot/spine_godot/spine-cpp", dirs_exist_ok=True)
-        run(tools / "python/bin/scons", "platform=ios", "arch=arm64", "target=template_release",
-            "ios_min_version=14.0", "-j8", cwd=spine / "spine-godot")
-    print("Public tools ready. Continue with build.py prepare using your installed Steam copy.")
+    # Reuse the official, checksum-pinned Spine 4.2 / Godot 4.5.1
+    # release from the reference project's dependency manifest. Its macOS
+    # and iOS frameworks are already built; recompiling spine-cpp and
+    # godot-cpp with SCons wastes hosted runner time and floods CI with
+    # repeated Xcode libc++ warnings.
+    spine_bin = ROOT / "vendor/spine-runtimes/spine-godot/bin"
+    required = (
+        "spine_godot_extension.gdextension",
+        "macos/libspine_godot.macos.template_release.framework",
+        "ios/libspine_godot.ios.template_release.framework",
+    )
+    if not all((spine_bin / item).exists() for item in required):
+        archive = download("spine-godot-4.2-4.5.1.zip",
+            "https://spine-godot.s3.eu-central-1.amazonaws.com/4.2/4.5.1-stable/spine-godot-extension-4.2-4.5.1-stable.zip",
+            "47c823a47373374530443c71e6d827df1dd6d441390d95c7cea31c54bc64ee57")
+        # The official archive uses bin/{ios,macos}/ and the extension
+        # descriptor. Extract only those public runtime assets, with safe
+        # relative paths and without importing reference repository code.
+        with zipfile.ZipFile(archive) as zipped:
+            members = [item for item in zipped.infolist() if not item.is_dir()]
+            for item in members:
+                name = item.filename
+                if name.startswith("bin/"):
+                    relative = name[4:]
+                elif name == "spine_godot_extension.gdextension":
+                    relative = name
+                else:
+                    continue
+                path = Path(relative)
+                if path.is_absolute() or ".." in path.parts or "\\\\" in relative:
+                    raise SystemExit(f"Unsafe Spine archive path: {name}")
+                if not (relative.startswith(("ios/", "macos/")) or
+                        relative == "spine_godot_extension.gdextension"):
+                    continue
+                target = spine_bin / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zipped.open(item) as source, target.open("wb") as output:
+                    shutil.copyfileobj(source, output)
+        missing = [item for item in required if not (spine_bin / item).exists()]
+        if missing:
+            raise SystemExit(f"Official Spine archive lacks required binaries: {missing}")
+    print("Public tools ready. Continue with build.py prepare for a legacy build, or build-shell for a game-free host.")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,53 @@
+{
+  "patches": [
+    {
+      "targetType": "MegaCrit.Sts2.Core.Nodes.NGame",
+      "targetMethod": "InitializePlatform",
+      "kind": "prefix",
+      "hookType": "STS2MobileIos.Patches.PlatformPatches",
+      "hookMethod": "InitializePlatformPrefix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Debug.OsDebugInfo",
+      "targetMethod": "LogSystemInfo",
+      "kind": "prefix",
+      "hookType": "STS2MobileIos.Patches.PlatformPatches",
+      "hookMethod": "LogSystemInfoPrefix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Saves.PrefsSave",
+      "targetMethod": "get_UploadData",
+      "kind": "prefix",
+      "hookType": "STS2MobileIos.Patches.PlatformPatches",
+      "hookMethod": "ReturnFalsePrefix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Saves.GodotFileIo",
+      "targetMethod": "CreateDirectory",
+      "kind": "prefix",
+      "hookType": "STS2MobileIos.Patches.PlatformPatches",
+      "hookMethod": "CreateDirectoryPrefix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Debug.SentryService",
+      "targetMethod": "Initialize",
+      "kind": "prefix",
+      "hookType": "STS2MobileIos.Patches.PlatformPatches",
+      "hookMethod": "SkipPrefix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Nodes.NGame",
+      "targetMethod": "_EnterTree",
+      "kind": "postfix",
+      "hookType": "STS2MobileIos.Patches.GameHooks",
+      "hookMethod": "EnterTreePostfix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Nodes.NGame",
+      "targetMethod": "_Ready",
+      "kind": "postfix",
+      "hookType": "STS2MobileIos.Patches.GameHooks",
+      "hookMethod": "ReadyPostfix"
+    }
+  ]
+}

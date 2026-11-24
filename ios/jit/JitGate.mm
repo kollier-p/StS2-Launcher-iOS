@@ -1,5 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <CoreImage/CoreImage.h>
+#include <dlfcn.h>
 #include <unistd.h>
 
 extern "C" int csops(pid_t, unsigned int, void *, size_t);
@@ -13,10 +15,15 @@ static BOOL engineStarted;
 @property(nonatomic, copy) NSDictionary *launchOptions;
 @property(nonatomic, strong) UIWindow *window;
 @property(nonatomic, strong) UILabel *notice;
+@property(nonatomic, strong) UIImageView *qr;
+@property(nonatomic, strong) UIButton *retry;
+@property(nonatomic, assign) BOOL bootstrapStarted;
+@property(nonatomic, assign) BOOL justInstalled;
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, copy) NSString *documents;
 - (void)start;
 - (void)checkReadiness;
+- (void)beginBootstrap;
 @end
 
 static STS2JitGate *startupGate;
@@ -64,12 +71,40 @@ static void ForwardLifecycle(id service, SEL selector, UIApplication *applicatio
     self.notice.font = [UIFont preferredFontForTextStyle:UIFontTextStyleTitle3];
     self.notice.textAlignment = NSTextAlignmentCenter;
     self.notice.numberOfLines = 0;
-    [controller.view addSubview:self.notice];
+    UIScrollView *scroll = [UIScrollView new];
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    [controller.view addSubview:scroll];
+    UIStackView *stack = [UIStackView new];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.alignment = UIStackViewAlignmentCenter;
+    stack.spacing = 12;
+    [scroll addSubview:stack];
+    [stack addArrangedSubview:self.notice];
+    self.qr = [UIImageView new];
+    self.qr.translatesAutoresizingMaskIntoConstraints = NO;
+    self.qr.contentMode = UIViewContentModeScaleAspectFit;
+    self.qr.hidden = YES;
+    [stack addArrangedSubview:self.qr];
+    self.retry = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.retry setTitle:@"Retry Steam setup" forState:UIControlStateNormal];
+    [self.retry addTarget:self action:@selector(beginBootstrap) forControlEvents:UIControlEventTouchUpInside];
+    self.retry.hidden = YES;
+    [stack addArrangedSubview:self.retry];
     UILayoutGuide *area = controller.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [self.notice.centerYAnchor constraintEqualToAnchor:area.centerYAnchor],
-        [self.notice.leadingAnchor constraintEqualToAnchor:area.leadingAnchor constant:24],
-        [self.notice.trailingAnchor constraintEqualToAnchor:area.trailingAnchor constant:-24],
+        [scroll.topAnchor constraintEqualToAnchor:area.topAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:area.bottomAnchor],
+        [scroll.leadingAnchor constraintEqualToAnchor:area.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:area.trailingAnchor],
+        [stack.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor constant:18],
+        [stack.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor constant:-18],
+        [stack.leadingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.trailingAnchor],
+        [stack.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor],
+        [self.notice.widthAnchor constraintEqualToAnchor:stack.widthAnchor constant:-48],
+        [self.qr.widthAnchor constraintEqualToConstant:220],
+        [self.qr.heightAnchor constraintEqualToConstant:220],
     ]];
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.window.rootViewController = controller;
@@ -103,12 +138,32 @@ static void ForwardLifecycle(id service, SEL selector, UIApplication *applicatio
     NSString *pack = [self.documents stringByAppendingPathComponent:@"StS2.pck"];
     NSDictionary *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:pack error:nil];
     unsigned long long expectedSize = [NSBundle.mainBundle.infoDictionary[@"STS2ContentSize"] unsignedLongLongValue];
-    BOOL complete = [[attributes fileType] isEqualToString:NSFileTypeRegular] && expectedSize > 0 && [attributes fileSize] == expectedSize;
+    NSString *readyPath = [self.documents stringByAppendingPathComponent:@"StS2.ready.json"];
+    NSData *readyData = [NSData dataWithContentsOfFile:readyPath];
+    NSDictionary *ready = readyData ? [NSJSONSerialization JSONObjectWithData:readyData options:0 error:nil] : nil;
+    if ([ready isKindOfClass:NSDictionary.class]) {
+        unsigned long long bytes = [ready[@"PackBytes"] unsignedLongLongValue];
+        unsigned long long manifest = [ready[@"Manifest"] unsignedLongLongValue];
+        NSString *managed = [self.documents stringByAppendingPathComponent:
+            [NSString stringWithFormat:@"steam-game-installs/%llu/Managed/sts2.dll", manifest]];
+        // A corrupt/partial ready marker never satisfies this gate.
+        expectedSize = bytes > 0 && manifest > 0 &&
+            [NSFileManager.defaultManager fileExistsAtPath:managed] ? bytes : 0;
+    }
+    BOOL complete = [[attributes fileType] isEqualToString:NSFileTypeRegular] &&
+        expectedSize > 0 && [attributes fileSize] == expectedSize;
+    if (self.justInstalled) return;
     if (!complete) {
-        self.notice.text = @"StS2 JIT\n\nGame content is missing or still copying.\n\n"
-            @"Open Files > On My iPad > StS2 JIT.\nCopy the prepared StS2.pck into that folder.\n"
-            @"Copy your mod folders into mods, then return here.\n\n"
-            @"Keep the filename StS2.pck and wait for the copy to finish.";
+        uint32_t permission = 0;
+        if (csops(getpid(), 0, &permission, sizeof(permission)) != 0 || !(permission & 0x10000000)) {
+            self.notice.text = @"StS2 JIT\n\nNo game is installed yet.\n\n"
+                @"Enable JIT for this app with your JIT tool or a Mac debugger. "
+                @"After JIT is enabled, SteamKit2 will sign you in, download your owned game, "
+                @"prepare it for iOS and install it here.\n\n"
+                @"JIT must be enabled again whenever you restart the app.";
+            return;
+        }
+        if (!self.bootstrapStarted) [self beginBootstrap];
         return;
     }
     uint32_t flags = 0;
@@ -122,7 +177,25 @@ static void ForwardLifecycle(id service, SEL selector, UIApplication *applicatio
     [self.timer invalidate];
     self.timer = nil;
     self.notice.text = @"StS2 JIT\n\nStarting game...";
-    originalLaunch(self.service, @selector(application:didFinishLaunchingWithOptions:), self.application, self.launchOptions);
+    BOOL launched = originalLaunch(self.service, @selector(application:didFinishLaunchingWithOptions:),
+        self.application, self.launchOptions);
+    if (!launched) {
+        self.notice.text = @"The Godot game failed to initialize. Check game compatibility and your JIT permission.";
+        return;
+    }
+    // iOS 27 requires a scene-bound window, while Godot 4.5.1 still creates
+    // its own window in didFinishLaunching. Move *that same engine window* to
+    // the scene the first-launch UIKit gate owned. Do not swap rendering views.
+    UIWindow *gameWindow = [self.service valueForKey:@"window"];
+    UIWindowScene *scene = self.window.windowScene;
+    if (scene && gameWindow && gameWindow != self.window) {
+        gameWindow.windowScene = scene;
+        gameWindow.frame = scene.coordinateSpace.bounds;
+        id<UIWindowSceneDelegate> sceneDelegate = scene.delegate;
+        if ([sceneDelegate respondsToSelector:@selector(setWindow:)])
+            [sceneDelegate setWindow:gameWindow];
+    }
+    if (gameWindow) [gameWindow makeKeyAndVisible];
     engineStarted = YES;
     // The initial active notification was deliberately withheld while waiting.
     ForwardLifecycle(self.service, @selector(applicationDidBecomeActive:), self.application);

@@ -2,7 +2,9 @@
 
 The experimental Cloud panel is available from **iOS > Steam Cloud**. It provides
 QR login, a file inventory, downloads to a separate archive, and an experimental
-vanilla and modded profile import. Uploading iPad progress to Steam is not implemented.
+vanilla and modded profile import. It also shares its Keychain sign-in with the
+[SteamKit2 game-file downloader](steam-game-downloads.md), which stages verified
+game files in a separate location. Uploading iPad progress to Steam is not implemented.
 
 ## Connect
 

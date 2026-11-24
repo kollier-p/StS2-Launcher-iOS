@@ -3,12 +3,19 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants Condition="'$(UseGameStub)' == 'true'">$(DefineConstants);STS2_PUBLIC_BOOTSTRAP</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="sts2"><HintPath>../../upstream/game-refs/sts2.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="GodotSharp"><HintPath>../../upstream/game-refs/GodotSharp.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="0Harmony"><HintPath>../../upstream/game-refs/0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="sts2" Condition="'$(UseGameStub)' != 'true'"><HintPath>../../upstream/game-refs/sts2.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="GodotSharp" Condition="'$(UseGameStub)' != 'true'"><HintPath>../../upstream/game-refs/GodotSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony" Condition="'$(UseGameStub)' != 'true'"><HintPath>../../upstream/game-refs/0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <ProjectReference Include="../STS2GameStub/STS2GameStub.csproj" Condition="'$(UseGameStub)' == 'true'" PrivateAssets="all">
+      <Private>false</Private>
+    </ProjectReference>
+    <PackageReference Include="GodotSharp" Version="4.5.1" Condition="'$(UseGameStub)' == 'true'" />
+    <PackageReference Include="Lib.Harmony" Version="2.4.2" Condition="'$(UseGameStub)' == 'true'" />
     <ProjectReference Include="../STS2MobileIos/STS2MobileIos.csproj" />
-    <EmbeddedResource Include="../STS2MobileIos/manifest.json" LogicalName="mobile-hooks.json" />
+    <EmbeddedResource Include="../STS2MobileIos/manifest.json" LogicalName="mobile-hooks.json" Condition="'$(UseGameStub)' != 'true'" />
+    <EmbeddedResource Include="../STS2MobileIos/manifest.bootstrap.json" LogicalName="mobile-hooks.json" Condition="'$(UseGameStub)' == 'true'" />
   </ItemGroup>
 </Project>
