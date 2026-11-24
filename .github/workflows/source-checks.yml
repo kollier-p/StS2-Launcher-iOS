@@ -28,6 +28,8 @@ jobs:
         run: dotnet run --project tests/cloud/CloudTests.csproj -c Release
       - name: Check LAN addresses offline
         run: dotnet run --project tests/features/FeatureTests.csproj -c Release
+      - name: Build SteamKit2 game downloader without game assets
+        run: dotnet build src/STS2SteamDownloads/STS2SteamDownloads.csproj -c Release
       - name: Build JIT dependency adapters
         run: dotnet build src/STS2JitPrepare -c Release
       - name: Build JIT support library
