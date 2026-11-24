@@ -33,4 +33,14 @@
     <ProjectReference Include="../STS2SteamDownloads/STS2SteamDownloads.csproj" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(UseGameStub)' == 'true'">
+    <!-- Do not compile game-specific UI, Cloud import or LAN types without the
+         real game; use a safe minimal JIT patch set instead. -->
+    <Compile Remove="**/*.cs" />
+    <Compile Include="Lite/**/*.cs" />
+    <Compile Include="NativeBridge.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseGameStub)' != 'true'">
+    <Compile Remove="Lite/**/*.cs" />
+  </ItemGroup>
 </Project>
