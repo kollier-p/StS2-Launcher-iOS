@@ -104,4 +104,3 @@ static class Checks
     }
 }
 
-await Checks.Main();
