@@ -45,7 +45,12 @@ public static class GameActivation
         if (!string.Equals(Path.GetFullPath(preparedPack), Path.GetFullPath(expectedPrepared),
                 StringComparison.Ordinal))
             throw new InvalidDataException("Prepared game pack was not in its manifest-specific staging folder.");
-        if (File.Exists(targetPack) && !File.Exists(marker))
+        // A prior launch may have crashed after publishing the pack but
+        // before the marker. In that case the previous pack is accepted only
+        // when it hashes exactly like this verified preparation. Unrelated
+        // user-provided packs are never silently replaced.
+        bool priorPack = File.Exists(targetPack);
+        if (priorPack && !await IdenticalAsync(targetPack, preparedPack, cancellation).ConfigureAwait(false))
             throw new InvalidOperationException("Unmarked game content already exists. Back it up before installing.");
 
         // Build the managed directory without exposing an incomplete set to Mono.
@@ -88,15 +93,31 @@ public static class GameActivation
             adaptHarmony?.Invoke(Path.Combine(staging, "original", "0Harmony.dll"),
                 Path.Combine(managedTmp, "0Harmony.dll"));
             if (Directory.Exists(installedManaged))
-                throw new InvalidOperationException("An uncommitted managed game installation exists.");
-            Directory.Move(managedTmp, installedManaged);
+            {
+                // Resume a crash between directory publication and the ready
+                // marker. Only reuse the directory when every file, including
+                // rewritten Harmony, is byte-for-byte identical.
+                var pending = Directory.EnumerateFiles(managedTmp, "*.dll").ToList();
+                var existing = Directory.EnumerateFiles(installedManaged, "*.dll").ToList();
+                if (pending.Count != existing.Count)
+                    throw new InvalidDataException("Uncommitted managed installation differs; manual recovery required.");
+                foreach (var candidate in pending)
+                {
+                    string prior = Path.Combine(installedManaged, Path.GetFileName(candidate));
+                    if (!File.Exists(prior) ||
+                        !await IdenticalAsync(candidate, prior, cancellation).ConfigureAwait(false))
+                        throw new InvalidDataException("Uncommitted managed installation differs; manual recovery required.");
+                }
+            }
+            else Directory.Move(managedTmp, installedManaged);
             cancellation.ThrowIfCancellationRequested();
 
             var ready = new Ready(manifest, new FileInfo(preparedPack).Length,
-                Convert.ToHexStringLower(SHA256.HashData(await File.ReadAllBytesAsync(assembly, cancellation).ConfigureAwait(false))));
-            // A same-filesystem atomic rename exposes a complete PCK, never a
-            // partially copied one. Publish the marker *after* this rename.
-            File.Move(preparedPack, targetPack, overwrite: false);
+                Convert.ToHexStringLower(await HashFileAsync(assembly, cancellation).ConfigureAwait(false)));
+            // A same-filesystem atomic rename exposes a complete PCK. If an
+            // interrupted previous activation already published these exact
+            // bytes, leave them in place; only now publish the ready marker.
+            if (!priorPack) File.Move(preparedPack, targetPack, overwrite: false);
             string metadataTmp = marker + ".preparing";
             await File.WriteAllTextAsync(metadataTmp, JsonSerializer.Serialize(ready), cancellation).ConfigureAwait(false);
             File.Move(metadataTmp, marker, overwrite: false);
@@ -106,6 +127,22 @@ public static class GameActivation
         {
             if (Directory.Exists(managedTmp)) Directory.Delete(managedTmp, recursive: true);
         }
+    }
+
+    private static Task<byte[]> HashFileAsync(string path, CancellationToken cancellation) =>
+        Task.Run(() =>
+        {
+            cancellation.ThrowIfCancellationRequested();
+            using var stream = File.OpenRead(path);
+            return SHA256.HashData(stream);
+        }, cancellation);
+
+    private static async Task<bool> IdenticalAsync(string left, string right, CancellationToken cancellation)
+    {
+        if (new FileInfo(left).Length != new FileInfo(right).Length) return false;
+        byte[] a = await HashFileAsync(left, cancellation).ConfigureAwait(false);
+        byte[] b = await HashFileAsync(right, cancellation).ConfigureAwait(false);
+        return a.AsSpan().SequenceEqual(b);
     }
 
     public static async Task<Ready?> ReadReadyAsync(string path, CancellationToken cancellation = default)
