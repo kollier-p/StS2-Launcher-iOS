@@ -30,6 +30,7 @@ public static class SteamGameDownloader
         new(Resources + "release_info.json", "release_info.json"),
         new(Resources + "Slay the Spire 2.pck", "original/Slay the Spire 2.pck"),
         new(Assemblies + "sts2.dll", "original/sts2.dll"),
+        new(Assemblies + "0Harmony.dll", "original/0Harmony.dll"),
         new(Assemblies + "Sentry.dll", "original/Sentry.dll", true),
         new(Assemblies + "Sentry.Godot.dll", "original/Sentry.Godot.dll", true),
         new(Assemblies + "Steamworks.NET.dll", "Steamworks.NET.dll"),
@@ -129,6 +130,24 @@ public static class SteamGameDownloader
             // Only fixed paths, never file.FileName, become local file names.
             plan.Add(new DepotFile(depotFile,
                 Path.Combine(directory, file.LocalPath.Replace('/', Path.DirectorySeparatorChar)), null));
+        }
+
+        // Unlike the reference's IL-rewritten host, the target's real Mono JIT
+        // loads the original game and all its managed mod dependencies. Include
+        // every top-level DLL from the macOS ARM64 managed directory, not only
+        // the files the reference patcher needed. Keep paths sandbox-relative.
+        var included = new HashSet<string>(Required.Select(file => file.DepotPath), StringComparer.Ordinal);
+        foreach (var pair in indexed)
+        {
+            string depotPath = pair.Key;
+            if (included.Contains(depotPath) || !depotPath.StartsWith(Assemblies, StringComparison.Ordinal)
+                || !depotPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                continue;
+            string name = depotPath[Assemblies.Length..];
+            if (name.Length is 0 or > 180 || name.Contains('/') || name == "." || name == ".."
+                || name.Contains('\\') || name.Any(char.IsControl))
+                throw new InvalidDataException("Steam listed an unsafe managed assembly path.");
+            plan.Add(new DepotFile(pair.Value, Path.Combine(directory, "original", name), null));
         }
         return plan.OrderBy(file => file.Source.TotalSize).ToArray();
     }
