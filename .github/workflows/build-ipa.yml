@@ -51,13 +51,28 @@ jobs:
       - name: Free disk space on ephemeral hosted Mac
         shell: bash
         run: |
+          set -euo pipefail
           df -h .
+          # The reference build also frees extra Xcode installations: this
+          # workflow compiles a patched .NET runtime and needs its disk space.
+          # Keep the selected Xcode_27.2.app untouched.
+          for unused in /Applications/Xcode_27.app /Applications/Xcode_27.2_Release_Candidate.app; do
+            if [[ -d "$unused" && "$unused/Contents/Developer" != "$DEVELOPER_DIR" ]]; then
+              sudo rm -rf "$unused"
+            fi
+          done
           if [[ -n "${ANDROID_HOME:-}" && -d "$ANDROID_HOME" ]]; then
             rm -rf "$ANDROID_HOME"
           fi
           df -h .
       - name: Bootstrap pinned public Godot, .NET and native dependencies
         run: python3 scripts/ios/bootstrap.py
+      - name: Remove downloaded archives after verified installation
+        shell: bash
+        run: |
+          rm -f .cache/downloads/dotnet9.tar.gz .cache/downloads/godot-mono.zip \
+            .cache/downloads/godot-templates.tpz .cache/downloads/fmod-addons.zip
+          df -h .
       - name: Compile patched Mono JIT with writable code aliases
         run: python3 scripts/ios/build.py runtime
       - name: Export game-free Godot shell and compile unsigned iOS launcher
