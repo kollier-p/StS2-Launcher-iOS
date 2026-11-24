@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using SteamKit2;
 using SteamKit2.CDN;
 using STS2MobileIos.Steam.Downloads.Depot;
 
