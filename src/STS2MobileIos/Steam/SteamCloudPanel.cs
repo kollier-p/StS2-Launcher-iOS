@@ -342,13 +342,13 @@ internal sealed class SteamCloudPanel
         {
             Callable.From(() =>
             {
-                if (cancellation.IsCancellationRequested) return;
+                if (cancellation.IsCancellationRequested || !_busy) return;
                 _status.Text = item.Total > 0
                     ? item.Phase + $" {item.Done * 100.0 / item.Total:0.0}% ({item.Done / (1024 * 1024):N0} / {item.Total / (1024 * 1024):N0} MiB)"
                     : item.Phase + "...";
             }).CallDeferred();
         });
-        var receipt = await Downloads.SteamGameDownloader.DownloadAsync(login,
+        var receipt = await Downloads.SteamGameDownloader.DownloadAsync(login.AccountName, login.RefreshToken,
             Path.Combine(OS.GetUserDataDir(), "steam-game-downloads"), reporter, cancellation);
         _status.Text = $"Steam game files verified ({receipt.Bytes / (1024 * 1024):N0} MiB). " +
             $"Saved under Files > StS2 JIT > steam-game-downloads > {receipt.Manifest}. " +
