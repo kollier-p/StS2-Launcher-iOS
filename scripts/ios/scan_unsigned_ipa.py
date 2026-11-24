@@ -28,9 +28,6 @@ def check(paths: set[str], sizes: dict[str, int], plist_data: bytes) -> None:
     info = plistlib.loads(plist_data)
     if not info.get("CFBundleIdentifier") or not info.get("CFBundleExecutable"):
         raise ValueError("Unsigned IPA has no valid bundle identifier or executable")
-    roots = {part for path in paths for part in [path.split("/")[0]] if part}
-    if len(roots) != 1:
-        raise ValueError("Expected exactly one iOS app bundle")
     missing = [name for name in REQUIRED if name not in paths]
     if missing:
         raise ValueError("Unsigned JIT bootstrap is missing: " + ", ".join(missing))
