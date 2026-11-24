@@ -63,7 +63,7 @@ public static class SteamGameDownloader
 
             progress?.Report(new Progress("Checking Steam ownership"));
             SteamApps.AppOwnershipTicketCallback ownership =
-                await connection.Apps.GetAppOwnershipTicket(AppId);
+                await connection.Apps.GetAppOwnershipTicket(AppId).ToTask().WaitAsync(cancellation);
             cancellation.ThrowIfCancellationRequested();
             if (ownership.Result != EResult.OK || ownership.AppID != AppId || ownership.Ticket is not { Length: > 0 })
                 throw new UnauthorizedAccessException("This Steam account could not prove ownership of Slay the Spire 2.");
@@ -73,6 +73,10 @@ public static class SteamGameDownloader
             if (!builds.TryGetValue(StableBranch, out var build) || build == null)
                 throw new InvalidDataException("Steam did not provide a downloadable stable macOS game build.");
 
+            // CDN downloads may take minutes; retain the authenticated CM session until done.
+            connection.SuspendIdleTimeout();
+            try
+            {
             progress?.Report(new Progress("Getting the game's file list"));
             using var depot = await SteamDepot.OpenAsync(connection, AppId, MacArm64DepotId,
                 build.ManifestId, StableBranch, cancellation);
@@ -84,9 +88,14 @@ public static class SteamGameDownloader
             Directory.CreateDirectory(destination);
             if (File.Exists(marker)) File.Delete(marker);
             progress?.Report(new Progress("Checking previously downloaded chunks"));
+            long reportedPercent = -1;
             var result = await new DepotDownload(depot, files,
-                (done, total) => progress?.Report(new Progress("Downloading game files", done, total)))
-                .RunAsync(cancellation);
+                (done, total) =>
+                {
+                    long percent = (long)(100.0 * done / Math.Max(1L, total));
+                    if (Interlocked.Exchange(ref reportedPercent, percent) != percent)
+                        progress?.Report(new Progress("Downloading game files", done, total));
+                }).RunAsync(cancellation);
             cancellation.ThrowIfCancellationRequested();
 
             // The marker is written only after all manifest hashes were checked, and then atomically moved.
@@ -97,6 +106,8 @@ public static class SteamGameDownloader
             File.Move(temporary, marker, overwrite: true);
             progress?.Report(new Progress("Game files downloaded and verified", result.Bytes, result.Bytes));
             return receipt;
+            }
+            finally { connection.ResumeIdleTimeout(); }
         }, cancellation);
 
     /// <summary>A manifest-controlled plan with fixed sandbox-relative output paths.</summary>
