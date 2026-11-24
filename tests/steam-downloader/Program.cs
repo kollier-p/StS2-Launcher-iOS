@@ -98,6 +98,7 @@ static class Checks
             Require(!SteamDepot.IsUsable(true, "cache1-tyo3.steamcontent.com", 443, true, false, [], 7),
                 "Steam proxy route was accepted");
 
+            await PackPreparationChecks.RunAsync();
             Console.WriteLine("Steam downloader checks passed: hashes, resume, corruption, cancellation and CDN policy.");
         }
         finally { Directory.Delete(directory, recursive: true); }
