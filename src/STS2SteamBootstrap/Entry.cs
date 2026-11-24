@@ -75,8 +75,11 @@ public static class Entry
                 .ConfigureAwait(false);
 
             Status("Installing verified game assemblies...");
+            string support = Path.Combine(AppContext.BaseDirectory, "STS2JitSupport.dll");
             await GameActivation.ActivateAsync(downloaded.Directory, documents,
-                downloaded.Manifest, result.OutputPack, CancellationToken.None).ConfigureAwait(false);
+                downloaded.Manifest, result.OutputPack, CancellationToken.None,
+                (original, destination) => HarmonyAdapter.Adapt(original, support, destination))
+                .ConfigureAwait(false);
             Status("The game is ready. Close this app fully, reopen it, and enable JIT to play with mods.");
             NativeReady();
         }
