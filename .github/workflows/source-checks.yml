@@ -22,6 +22,10 @@ jobs:
         run: python3 scripts/check_repository.py
       - name: Test JIT build tooling, backups, content and reports
         run: python3 -m unittest discover -s scripts/ios -p 'test_*.py'
+      - name: Protect JIT mod-patching backend during launcher migration
+        run: python3 -m unittest discover -s tests/ios -p 'test_jit_*.py'
+      - name: Test unsigned IPA archive packaging
+        run: python3 -m unittest discover -s scripts/ios -p 'test_package_ipa.py'
       - name: Test frame accounting
         run: dotnet run --project tests/ios/FrameWindowTests.csproj -c Release
       - name: Test cloud integrity and save isolation
